@@ -6,7 +6,14 @@ export function loadChores(): Chore[] {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
     if (!data) return [];
-    return JSON.parse(data);
+    const chores: Chore[] = JSON.parse(data);
+    // Migrate old data missing new fields
+    return chores.map(c => ({
+      ...c,
+      frequencyDays: c.frequencyDays ?? 1,
+      skippedDates: c.skippedDates ?? [],
+      priority: c.priority ?? ((c.durationMinutes >= 5 && c.durationMinutes <= 10) ? 'high' : 'normal'),
+    }));
   } catch {
     return [];
   }
@@ -22,10 +29,14 @@ export function generateChoreId(): string {
 
 // CSV export for chores
 export function exportChoresToCsv(chores: Chore[]): string {
-  const headers = ['id', 'title', 'scheduledAt', 'durationMinutes', 'status', 'createdAt', 'completedAt'];
+  const headers = ['id', 'title', 'scheduledAt', 'durationMinutes', 'frequencyDays', 'priority', 'skippedDates', 'status', 'createdAt', 'completedAt'];
   const rows = chores.map(chore =>
     headers.map(h => {
-      const value = chore[h as keyof Chore] ?? '';
+      let value: string | number | string[] | null = chore[h as keyof Chore] ?? '';
+      // Join array fields with semicolons
+      if (Array.isArray(value)) {
+        value = value.join(';');
+      }
       const str = String(value);
       if (str.includes(',') || str.includes('\n') || str.includes('"')) {
         return `"${str.replace(/"/g, '""')}"`;
@@ -53,11 +64,15 @@ export function importChoresFromCsv(csvContent: string): Chore[] {
       obj[h] = values[idx] || '';
     });
 
+    const duration = parseInt(obj.durationMinutes) || 30;
     chores.push({
       id: obj.id || generateChoreId(),
       title: obj.title || '',
       scheduledAt: obj.scheduledAt || null,
-      durationMinutes: parseInt(obj.durationMinutes) || 30,
+      durationMinutes: duration,
+      frequencyDays: parseInt(obj.frequencyDays) || 1,
+      priority: (obj.priority as Chore['priority']) || (duration >= 5 && duration <= 10 ? 'high' : 'normal'),
+      skippedDates: obj.skippedDates ? obj.skippedDates.split(';').filter(Boolean) : [],
       status: (obj.status as Chore['status']) || 'pending',
       createdAt: obj.createdAt || new Date().toISOString(),
       completedAt: obj.completedAt || null,

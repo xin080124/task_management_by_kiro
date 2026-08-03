@@ -317,6 +317,101 @@ body {
   background: #fff0f0;
 }
 
+.btn-edit {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.btn-edit:hover {
+  color: #007aff;
+  background: #e8f4ff;
+}
+
+.chore-frequency {
+  font-size: 0.75rem;
+  color: #888;
+  margin-left: 4px;
+}
+
+.edit-fields-form {
+  padding: 8px 12px;
+  background: #f8f8f8;
+  border-radius: 8px;
+  margin: 8px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.edit-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.edit-row label {
+  font-size: 0.8rem;
+  color: #666;
+  white-space: nowrap;
+}
+
+.edit-row input {
+  width: 70px;
+}
+
+.edit-row-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.edit-title-input {
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.btn-skip {
+  background: #fff3e0;
+  color: #e65100;
+  border: 1px solid #ffcc80;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.btn-skip:hover {
+  background: #ffe0b2;
+  border-color: #ffb74d;
+}
+
+.skip-streak {
+  font-size: 0.8rem;
+  color: #e65100;
+  background: #fff3e0;
+  padding: 4px 10px;
+  border-radius: 4px;
+  margin-top: 6px;
+  display: inline-block;
+}
+
+.high-priority {
+  border-left: 4px solid #ff6d00 !important;
+  box-shadow: 0 1px 4px rgba(255, 109, 0, 0.2) !important;
+}
+
+.priority-icon {
+  margin-right: 4px;
+}
+
 .type-badge {
   font-size: 0.7rem;
   font-weight: 700;

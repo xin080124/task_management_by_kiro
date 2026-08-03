@@ -25,13 +25,18 @@ export const REVIEW_INTERVALS: Record<TaskStatus, number> = {
 
 // ===== Chore types =====
 
-export type ChoreStatus = 'pending' | 'scheduled' | 'overdue' | 'done';
+export type ChoreStatus = 'pending' | 'scheduled' | 'overdue' | 'done' | 'skipped';
+
+export type ChorePriority = 'high' | 'normal';
 
 export interface Chore {
   id: string;
   title: string;
   scheduledAt: string | null; // ISO datetime string, null = unscheduled
   durationMinutes: number; // default 30
+  frequencyDays: number; // repeat every n days, default 1
+  priority: ChorePriority; // auto-set to 'high' if 5-10 min
+  skippedDates: string[]; // ISO date strings of skipped occurrences
   status: ChoreStatus;
   createdAt: string;
   completedAt: string | null;
