@@ -1,41 +1,36 @@
-import type { Chore } from './types';
+import type { Meal } from './types';
 
-const STORAGE_KEY = 'task-manager-chores';
+const STORAGE_KEY = 'task-manager-meals';
 
-export function loadChores(): Chore[] {
+export function loadMeals(): Meal[] {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
     if (!data) return [];
-    const chores: Chore[] = JSON.parse(data);
-    // Migrate old data missing new fields
-    return chores.map(c => ({
-      ...c,
-      frequencyDays: c.frequencyDays ?? 1,
-      skippedDates: c.skippedDates ?? [],
-      startedAt: c.startedAt ?? null,
-      actualMinutes: c.actualMinutes ?? null,
-      priority: c.priority ?? ((c.durationMinutes >= 5 && c.durationMinutes <= 10) ? 'high' : 'normal'),
+    const meals: Meal[] = JSON.parse(data);
+    return meals.map(m => ({
+      ...m,
+      frequencyDays: m.frequencyDays ?? 0,
+      skippedDates: m.skippedDates ?? [],
     }));
   } catch {
     return [];
   }
 }
 
-export function saveChores(chores: Chore[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(chores));
+export function saveMeals(meals: Meal[]): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(meals));
 }
 
-export function generateChoreId(): string {
-  return 'ch-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+export function generateMealId(): string {
+  return 'ml-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-// CSV export for chores
-export function exportChoresToCsv(chores: Chore[]): string {
-  const headers = ['id', 'title', 'scheduledAt', 'durationMinutes', 'actualMinutes', 'startedAt', 'frequencyDays', 'priority', 'skippedDates', 'status', 'createdAt', 'completedAt'];
-  const rows = chores.map(chore =>
+// CSV export
+export function exportMealsToCsv(meals: Meal[]): string {
+  const headers = ['id', 'dish', 'mealTime', 'scheduledDate', 'prepMinutes', 'frequencyDays', 'skippedDates', 'status', 'createdAt', 'completedAt'];
+  const rows = meals.map(meal =>
     headers.map(h => {
-      let value: string | number | string[] | null = chore[h as keyof Chore] ?? '';
-      // Join array fields with semicolons
+      let value: string | number | string[] | null = meal[h as keyof Meal] ?? '';
       if (Array.isArray(value)) {
         value = value.join(';');
       }
@@ -49,13 +44,13 @@ export function exportChoresToCsv(chores: Chore[]): string {
   return [headers.join(','), ...rows].join('\n');
 }
 
-// CSV import for chores
-export function importChoresFromCsv(csvContent: string): Chore[] {
+// CSV import
+export function importMealsFromCsv(csvContent: string): Meal[] {
   const lines = parseCsvLines(csvContent);
   if (lines.length < 2) return [];
 
   const headers = lines[0];
-  const chores: Chore[] = [];
+  const meals: Meal[] = [];
 
   for (let i = 1; i < lines.length; i++) {
     const values = lines[i];
@@ -66,24 +61,21 @@ export function importChoresFromCsv(csvContent: string): Chore[] {
       obj[h] = values[idx] || '';
     });
 
-    const duration = parseInt(obj.durationMinutes) || 30;
-    chores.push({
-      id: obj.id || generateChoreId(),
-      title: obj.title || '',
-      scheduledAt: obj.scheduledAt || null,
-      durationMinutes: duration,
-      actualMinutes: obj.actualMinutes ? parseInt(obj.actualMinutes) : null,
-      startedAt: obj.startedAt || null,
-      frequencyDays: parseInt(obj.frequencyDays) || 1,
-      priority: (obj.priority as Chore['priority']) || (duration >= 5 && duration <= 10 ? 'high' : 'normal'),
+    meals.push({
+      id: obj.id || generateMealId(),
+      dish: obj.dish || '',
+      mealTime: (obj.mealTime as Meal['mealTime']) || 'dinner',
+      scheduledDate: obj.scheduledDate || new Date().toISOString().slice(0, 10),
+      prepMinutes: parseInt(obj.prepMinutes) || 30,
+      frequencyDays: parseInt(obj.frequencyDays) || 0,
       skippedDates: obj.skippedDates ? obj.skippedDates.split(';').filter(Boolean) : [],
-      status: (obj.status as Chore['status']) || 'pending',
+      status: (obj.status as Meal['status']) || 'planned',
       createdAt: obj.createdAt || new Date().toISOString(),
       completedAt: obj.completedAt || null,
     });
   }
 
-  return chores;
+  return meals;
 }
 
 function parseCsvLines(csv: string): string[][] {

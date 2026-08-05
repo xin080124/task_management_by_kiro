@@ -23,7 +23,7 @@ export default function ChoreTimeline({ chores }: Props) {
   // Find time range for the timeline
   const times = scheduledToday.map(c => ({
     start: new Date(c.scheduledAt!),
-    end: new Date(new Date(c.scheduledAt!).getTime() + c.durationMinutes * 60 * 1000),
+    end: new Date(new Date(c.scheduledAt!).getTime() + (c.actualMinutes ?? c.durationMinutes) * 60 * 1000),
   }));
 
   const minTime = Math.min(...times.map(t => t.start.getTime()));
@@ -52,7 +52,7 @@ export default function ChoreTimeline({ chores }: Props) {
 
   for (const chore of scheduledToday) {
     const start = new Date(chore.scheduledAt!);
-    const end = new Date(start.getTime() + chore.durationMinutes * 60 * 1000);
+    const end = new Date(start.getTime() + (chore.actualMinutes ?? chore.durationMinutes) * 60 * 1000);
 
     let assigned = -1;
     for (let i = 0; i < laneEnds.length; i++) {

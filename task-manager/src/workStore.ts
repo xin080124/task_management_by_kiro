@@ -1,41 +1,39 @@
-import type { Chore } from './types';
+import type { WorkEntry } from './types';
 
-const STORAGE_KEY = 'task-manager-chores';
+const STORAGE_KEY = 'task-manager-work';
 
-export function loadChores(): Chore[] {
+export function loadWorkEntries(): WorkEntry[] {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
     if (!data) return [];
-    const chores: Chore[] = JSON.parse(data);
-    // Migrate old data missing new fields
-    return chores.map(c => ({
-      ...c,
-      frequencyDays: c.frequencyDays ?? 1,
-      skippedDates: c.skippedDates ?? [],
-      startedAt: c.startedAt ?? null,
-      actualMinutes: c.actualMinutes ?? null,
-      priority: c.priority ?? ((c.durationMinutes >= 5 && c.durationMinutes <= 10) ? 'high' : 'normal'),
+    const entries: WorkEntry[] = JSON.parse(data);
+    return entries.map(e => ({
+      ...e,
+      project: e.project ?? '',
+      startedAt: e.startedAt ?? null,
+      frequencyDays: e.frequencyDays ?? 0,
+      skippedDates: e.skippedDates ?? [],
+      actualMinutes: e.actualMinutes ?? null,
     }));
   } catch {
     return [];
   }
 }
 
-export function saveChores(chores: Chore[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(chores));
+export function saveWorkEntries(entries: WorkEntry[]): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
 }
 
-export function generateChoreId(): string {
-  return 'ch-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+export function generateWorkId(): string {
+  return 'wk-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-// CSV export for chores
-export function exportChoresToCsv(chores: Chore[]): string {
-  const headers = ['id', 'title', 'scheduledAt', 'durationMinutes', 'actualMinutes', 'startedAt', 'frequencyDays', 'priority', 'skippedDates', 'status', 'createdAt', 'completedAt'];
-  const rows = chores.map(chore =>
+// CSV export
+export function exportWorkToCsv(entries: WorkEntry[]): string {
+  const headers = ['id', 'task', 'project', 'category', 'scheduledDate', 'durationMinutes', 'actualMinutes', 'startedAt', 'frequencyDays', 'skippedDates', 'status', 'createdAt', 'completedAt'];
+  const rows = entries.map(entry =>
     headers.map(h => {
-      let value: string | number | string[] | null = chore[h as keyof Chore] ?? '';
-      // Join array fields with semicolons
+      let value: string | number | string[] | null = entry[h as keyof WorkEntry] ?? '';
       if (Array.isArray(value)) {
         value = value.join(';');
       }
@@ -49,13 +47,13 @@ export function exportChoresToCsv(chores: Chore[]): string {
   return [headers.join(','), ...rows].join('\n');
 }
 
-// CSV import for chores
-export function importChoresFromCsv(csvContent: string): Chore[] {
+// CSV import
+export function importWorkFromCsv(csvContent: string): WorkEntry[] {
   const lines = parseCsvLines(csvContent);
   if (lines.length < 2) return [];
 
   const headers = lines[0];
-  const chores: Chore[] = [];
+  const entries: WorkEntry[] = [];
 
   for (let i = 1; i < lines.length; i++) {
     const values = lines[i];
@@ -66,24 +64,24 @@ export function importChoresFromCsv(csvContent: string): Chore[] {
       obj[h] = values[idx] || '';
     });
 
-    const duration = parseInt(obj.durationMinutes) || 30;
-    chores.push({
-      id: obj.id || generateChoreId(),
-      title: obj.title || '',
-      scheduledAt: obj.scheduledAt || null,
-      durationMinutes: duration,
+    entries.push({
+      id: obj.id || generateWorkId(),
+      task: obj.task || '',
+      project: obj.project || '',
+      category: (obj.category as WorkEntry['category']) || 'other',
+      scheduledDate: obj.scheduledDate || new Date().toISOString().slice(0, 10),
+      durationMinutes: parseInt(obj.durationMinutes) || 30,
       actualMinutes: obj.actualMinutes ? parseInt(obj.actualMinutes) : null,
       startedAt: obj.startedAt || null,
-      frequencyDays: parseInt(obj.frequencyDays) || 1,
-      priority: (obj.priority as Chore['priority']) || (duration >= 5 && duration <= 10 ? 'high' : 'normal'),
+      frequencyDays: parseInt(obj.frequencyDays) || 0,
       skippedDates: obj.skippedDates ? obj.skippedDates.split(';').filter(Boolean) : [],
-      status: (obj.status as Chore['status']) || 'pending',
+      status: (obj.status as WorkEntry['status']) || 'planned',
       createdAt: obj.createdAt || new Date().toISOString(),
       completedAt: obj.completedAt || null,
     });
   }
 
-  return chores;
+  return entries;
 }
 
 function parseCsvLines(csv: string): string[][] {
