@@ -32,10 +32,12 @@ export type ChorePriority = 'high' | 'normal';
 export interface Chore {
   id: string;
   title: string;
+  description: string; // 自定义描述，默认空
   scheduledAt: string | null; // ISO datetime string, null = unscheduled
   durationMinutes: number; // default 30
   actualMinutes: number | null; // 实际用时，自动计算
   startedAt: string | null; // ISO datetime, 点开始时记录
+  pausedElapsed: number; // 暂停时已累计的秒数
   frequencyDays: number; // repeat every n days, default 1
   priority: ChorePriority; // auto-set to 'high' if 5-10 min
   skippedDates: string[]; // ISO date strings of skipped occurrences
@@ -78,6 +80,7 @@ export interface WorkEntry {
   durationMinutes: number; // 预估时长
   actualMinutes: number | null; // 实际时长，自动计算
   startedAt: string | null; // ISO datetime, 点开始时记录
+  pausedElapsed: number; // 暂停时已累计的秒数
   frequencyDays: number; // 重复频率，0=不重复
   skippedDates: string[];
   status: WorkStatus;

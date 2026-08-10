@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { WorkEntry, WorkCategory } from '../types';
 import { loadWorkEntries, saveWorkEntries, generateWorkId, exportWorkToCsv, importWorkFromCsv } from '../workStore';
+import WorkTimeline from '../components/WorkTimeline';
 
 const CATEGORY_LABELS: Record<WorkCategory, string> = {
   coding: '💻 编码',
@@ -15,6 +16,7 @@ export default function WorkPage() {
   const [entries, setEntries] = useState<WorkEntry[]>([]);
   const [initialized, setInitialized] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form state
@@ -52,7 +54,8 @@ export default function WorkPage() {
   const todayEntries = entries.filter(e => getCategory(e) === 'today');
   const upcomingEntries = entries.filter(e => getCategory(e) === 'upcoming');
   const overdueEntries = entries.filter(e => getCategory(e) === 'overdue');
-  const doneEntries = entries.filter(e => getCategory(e) === 'done');
+  const doneEntries = entries.filter(e => getCategory(e) === 'done')
+    .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime());
   const skippedEntries = entries.filter(e => getCategory(e) === 'skipped');
 
   todayEntries.sort((a, b) => categoryOrder(a.category) - categoryOrder(b.category));
@@ -83,6 +86,7 @@ export default function WorkPage() {
             durationMinutes: e.durationMinutes,
             actualMinutes: null,
             startedAt: null,
+            pausedElapsed: 0,
             frequencyDays: e.frequencyDays,
             skippedDates: e.skippedDates,
             status: 'planned',
@@ -127,6 +131,7 @@ export default function WorkPage() {
       durationMinutes: newDuration,
       actualMinutes: null,
       startedAt: null,
+      pausedElapsed: 0,
       frequencyDays: newFrequency,
       skippedDates: [],
       status: 'planned',
@@ -148,22 +153,38 @@ export default function WorkPage() {
     ));
   }, []);
 
+  const handlePause = useCallback((id: string) => {
+    setEntries(prev => prev.map(e => {
+      if (e.id !== id || !e.startedAt) return e;
+      const elapsed = Math.floor((Date.now() - new Date(e.startedAt).getTime()) / 1000) + (e.pausedElapsed ?? 0);
+      return { ...e, startedAt: null, pausedElapsed: elapsed };
+    }));
+  }, []);
+
+  const handleResume = useCallback((id: string) => {
+    setEntries(prev => prev.map(e =>
+      e.id === id ? { ...e, status: 'in-progress' as const, startedAt: new Date().toISOString() } : e
+    ));
+  }, []);
+
   const handleComplete = useCallback((id: string) => {
     setEntries(prev => {
       const updated = prev.map(e => {
         if (e.id !== id) return e;
-        // Auto-calculate elapsed from startedAt, append to existing actualMinutes
-        let elapsed = 0;
+        // Auto-calculate actual minutes: pausedElapsed + current running time
+        const paused = e.pausedElapsed ?? 0;
+        let totalSeconds = paused;
         if (e.startedAt) {
-          elapsed = Math.max(1, Math.round((Date.now() - new Date(e.startedAt).getTime()) / 60000));
+          totalSeconds += Math.floor((Date.now() - new Date(e.startedAt).getTime()) / 1000);
         }
-        const prevActual = e.actualMinutes ?? 0;
+        const actual = Math.max(1, Math.round(totalSeconds / 60));
         return {
           ...e,
           status: 'done' as const,
           completedAt: new Date().toISOString(),
           startedAt: null,
-          actualMinutes: prevActual + elapsed,
+          pausedElapsed: 0,
+          actualMinutes: actual,
         };
       });
 
@@ -179,6 +200,7 @@ export default function WorkPage() {
           durationMinutes: completed.durationMinutes,
           actualMinutes: null,
           startedAt: null,
+          pausedElapsed: 0,
           frequencyDays: completed.frequencyDays,
           skippedDates: completed.skippedDates ?? [],
           status: 'planned',
@@ -215,6 +237,7 @@ export default function WorkPage() {
           durationMinutes: skipped.durationMinutes,
           actualMinutes: null,
           startedAt: null,
+          pausedElapsed: 0,
           frequencyDays: skipped.frequencyDays,
           skippedDates: skipped.skippedDates ?? [],
           status: 'planned',
@@ -234,10 +257,29 @@ export default function WorkPage() {
     }
   }, []);
 
-  const handleExtend = useCallback((id: string) => {
-    setEntries(prev => prev.map(e =>
-      e.id === id ? { ...e, status: 'in-progress' as const, startedAt: new Date().toISOString() } : e
-    ));
+  const handleBatchDelete = useCallback(() => {
+    if (selectedForDelete.size === 0) return;
+    if (confirm(`确定删除选中的 ${selectedForDelete.size} 项？`)) {
+      setEntries(prev => prev.filter(e => !selectedForDelete.has(e.id)));
+      setSelectedForDelete(new Set());
+    }
+  }, [selectedForDelete]);
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedForDelete(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback((ids: string[]) => {
+    setSelectedForDelete(prev => {
+      const allSelected = ids.every(id => prev.has(id));
+      if (allSelected) return new Set();
+      return new Set(ids);
+    });
   }, []);
 
   const handleEdit = useCallback((id: string, updates: Partial<Pick<WorkEntry, 'task' | 'project' | 'category' | 'durationMinutes' | 'frequencyDays' | 'scheduledDate'>>) => {
@@ -307,6 +349,8 @@ export default function WorkPage() {
           </label>
         </div>
       </nav>
+
+      <WorkTimeline entries={entries} />
 
       {showAddForm && (
         <form className="add-task-form" onSubmit={handleAdd}>
@@ -395,7 +439,7 @@ export default function WorkPage() {
           <div className="task-section">
             <h3 className="section-overdue">⚠️ 过期未完成 ({overdueEntries.length})</h3>
             {overdueEntries.map(entry => (
-              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onExtend={handleExtend} onEdit={handleEdit} />
+              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
             ))}
           </div>
         )}
@@ -404,7 +448,7 @@ export default function WorkPage() {
           <div className="task-section">
             <h3>🔥 今天 ({todayEntries.length})</h3>
             {todayEntries.map(entry => (
-              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onExtend={handleExtend} onEdit={handleEdit} />
+              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
             ))}
           </div>
         )}
@@ -413,7 +457,7 @@ export default function WorkPage() {
           <div className="task-section">
             <h3>📅 之后 ({allUpcoming.length})</h3>
             {allUpcoming.map(entry => (
-              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onExtend={handleExtend} onEdit={handleEdit} />
+              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
             ))}
           </div>
         )}
@@ -421,19 +465,32 @@ export default function WorkPage() {
         {skippedEntries.length > 0 && (
           <div className="task-section">
             <h3>⏭️ 已跳过 ({skippedEntries.length})</h3>
-            {skippedEntries.slice(0, 10).map(entry => (
-              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onExtend={handleExtend} onEdit={handleEdit} />
+            {skippedEntries.map(entry => (
+              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
             ))}
           </div>
         )}
 
         {doneEntries.length > 0 && (
           <div className="task-section">
-            <h3>✅ 已完成 ({doneEntries.length})</h3>
-            {doneEntries.slice(0, 10).map(entry => (
-              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onExtend={handleExtend} onEdit={handleEdit} />
+            <div className="section-header-with-actions">
+              <h3>✅ 已完成 ({doneEntries.length})</h3>
+              <div className="batch-actions">
+                <label className="batch-select-all">
+                  <input type="checkbox" checked={doneEntries.length > 0 && doneEntries.every(e => selectedForDelete.has(e.id))} onChange={() => toggleSelectAll(doneEntries.map(e => e.id))} />
+                  全选
+                </label>
+                {selectedForDelete.size > 0 && (
+                  <button className="btn btn-danger btn-sm" onClick={handleBatchDelete}>删除选中 ({selectedForDelete.size})</button>
+                )}
+              </div>
+            </div>
+            {doneEntries.map(entry => (
+              <div key={entry.id} className="batch-item">
+                <input type="checkbox" className="batch-checkbox" checked={selectedForDelete.has(entry.id)} onChange={() => toggleSelect(entry.id)} />
+                <WorkCard entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
+              </div>
             ))}
-            {doneEntries.length > 10 && <p className="more-hint">...还有 {doneEntries.length - 10} 项已完成</p>}
           </div>
         )}
 
@@ -456,14 +513,15 @@ function categoryOrder(cat: WorkCategory): number {
 interface WorkCardProps {
   entry: WorkEntry;
   onStart: (id: string) => void;
+  onPause: (id: string) => void;
+  onResume: (id: string) => void;
   onComplete: (id: string) => void;
   onSkip: (id: string) => void;
   onDelete: (id: string) => void;
-  onExtend: (id: string) => void;
   onEdit: (id: string, updates: Partial<Pick<WorkEntry, 'task' | 'project' | 'category' | 'durationMinutes' | 'frequencyDays' | 'scheduledDate'>>) => void;
 }
 
-function WorkCard({ entry, onStart, onComplete, onSkip, onDelete, onExtend, onEdit }: WorkCardProps) {
+function WorkCard({ entry, onStart, onPause, onResume, onComplete, onSkip, onDelete, onEdit }: WorkCardProps) {
   const [editing, setEditing] = useState(false);
   const [editTask, setEditTask] = useState(entry.task);
   const [editProject, setEditProject] = useState(entry.project ?? '');
@@ -474,15 +532,17 @@ function WorkCard({ entry, onStart, onComplete, onSkip, onDelete, onExtend, onEd
   const [elapsed, setElapsed] = useState(0);
 
   const isInProgress = entry.status === 'in-progress';
+  const isPaused = !entry.startedAt && (entry.pausedElapsed ?? 0) > 0 && entry.status === 'in-progress';
 
   // Live timer for in-progress entries
   useEffect(() => {
     if (!isInProgress || !entry.startedAt) return;
-    const update = () => setElapsed(Math.floor((Date.now() - new Date(entry.startedAt!).getTime()) / 1000));
+    const base = entry.pausedElapsed ?? 0;
+    const update = () => setElapsed(base + Math.floor((Date.now() - new Date(entry.startedAt!).getTime()) / 1000));
     update();
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, [isInProgress, entry.startedAt]);
+  }, [isInProgress, entry.startedAt, entry.pausedElapsed]);
 
   const handleSave = () => {
     onEdit(entry.id, {
@@ -582,11 +642,21 @@ function WorkCard({ entry, onStart, onComplete, onSkip, onDelete, onExtend, onEd
 
       {!isDone && !isSkipped && (
         <div className="chore-actions">
-          {!isInProgress && (
+          {!isInProgress && !isPaused && (
             <button className="btn btn-secondary" onClick={() => onStart(entry.id)}>▶ 开始</button>
           )}
-          {isInProgress && (
-            <button className="btn btn-pass" onClick={() => onComplete(entry.id)}>⏹ 完成</button>
+          {isPaused && (
+            <>
+              <span className="chore-timer paused">⏸ {formatElapsed(entry.pausedElapsed ?? 0)}</span>
+              <button className="btn btn-secondary" onClick={() => onResume(entry.id)}>▶ 继续</button>
+            </>
+          )}
+          {isInProgress && entry.startedAt && (
+            <>
+              <span className="chore-timer">⏱ {formatElapsed(elapsed)}</span>
+              <button className="btn btn-pause" onClick={() => onPause(entry.id)}>⏸ 暂停</button>
+              <button className="btn btn-pass" onClick={() => onComplete(entry.id)}>⏹ 完成</button>
+            </>
           )}
           <button className="btn btn-skip" onClick={() => onSkip(entry.id)}>⏭ 跳过</button>
         </div>
@@ -603,11 +673,6 @@ function WorkCard({ entry, onStart, onComplete, onSkip, onDelete, onExtend, onEd
         </div>
       )}
 
-      {isDone && (
-        <div className="chore-actions">
-          <button className="btn btn-secondary" onClick={() => onExtend(entry.id)}>▶ 继续</button>
-        </div>
-      )}
     </div>
   );
 }

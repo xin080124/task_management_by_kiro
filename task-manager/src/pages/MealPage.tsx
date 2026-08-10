@@ -50,7 +50,8 @@ export default function MealPage() {
   const todayMeals = meals.filter(m => getMealCategory(m) === 'today');
   const upcomingMeals = meals.filter(m => getMealCategory(m) === 'upcoming');
   const pastMeals = meals.filter(m => getMealCategory(m) === 'past');
-  const doneMeals = meals.filter(m => getMealCategory(m) === 'done');
+  const doneMeals = meals.filter(m => getMealCategory(m) === 'done')
+    .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime());
   const skippedMeals = meals.filter(m => getMealCategory(m) === 'skipped');
 
   // Sort
@@ -350,25 +351,48 @@ export default function MealPage() {
         {todayMeals.length > 0 && (
           <div className="task-section">
             <h3>🍳 今天 ({todayMeals.length})</h3>
-            {todayMeals.map(meal => (
-              <MealCard key={meal.id} meal={meal} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
-            ))}
+            {(() => {
+              let lastMealTime = '';
+              return todayMeals.map(meal => {
+                const showSep = meal.mealTime !== lastMealTime;
+                lastMealTime = meal.mealTime;
+                return (
+                  <div key={meal.id}>
+                    {showSep && <div className="meal-mealtime-separator">{MEAL_TIME_LABELS[meal.mealTime]}</div>}
+                    <MealCard meal={meal} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
+                  </div>
+                );
+              });
+            })()}
           </div>
         )}
 
         {allUpcoming.length > 0 && (
           <div className="task-section">
             <h3>📅 之后 ({allUpcoming.length})</h3>
-            {allUpcoming.map(meal => (
-              <MealCard key={meal.id} meal={meal} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
-            ))}
+            {(() => {
+              let lastDate = '';
+              return allUpcoming.map(meal => {
+                const showSep = meal.scheduledDate !== lastDate;
+                lastDate = meal.scheduledDate;
+                const d = new Date(meal.scheduledDate + 'T00:00:00');
+                const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+                const dayLabel = days[d.getDay()];
+                return (
+                  <div key={meal.id}>
+                    {showSep && <div className="meal-day-separator">{meal.scheduledDate} ({dayLabel})</div>}
+                    <MealCard meal={meal} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
+                  </div>
+                );
+              });
+            })()}
           </div>
         )}
 
         {skippedMeals.length > 0 && (
           <div className="task-section">
             <h3>⏭️ 已跳过 ({skippedMeals.length})</h3>
-            {skippedMeals.slice(0, 10).map(meal => (
+            {skippedMeals.map(meal => (
               <MealCard key={meal.id} meal={meal} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
             ))}
           </div>
@@ -377,10 +401,9 @@ export default function MealPage() {
         {doneMeals.length > 0 && (
           <div className="task-section">
             <h3>✅ 已完成 ({doneMeals.length})</h3>
-            {doneMeals.slice(0, 10).map(meal => (
+            {doneMeals.map(meal => (
               <MealCard key={meal.id} meal={meal} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
             ))}
-            {doneMeals.length > 10 && <p className="more-hint">...还有 {doneMeals.length - 10} 道已完成</p>}
           </div>
         )}
 
@@ -442,7 +465,7 @@ function MealCard({ meal, onComplete, onSkip, onDelete, onEdit }: MealCardProps)
   const skipCount = meal.skippedDates?.length ?? 0;
 
   return (
-    <div className={`task-card meal-card ${isDone ? 'done' : ''} ${isSkipped ? 'skipped' : ''}`}>
+    <div className={`task-card meal-card meal-${meal.mealTime} ${isDone ? 'done' : ''} ${isSkipped ? 'skipped' : ''}`}>
       <div className="task-header">
         {!editing ? (
           <span className="chore-title">

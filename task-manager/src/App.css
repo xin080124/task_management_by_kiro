@@ -793,17 +793,23 @@ body {
 }
 
 /* Daze Timer */
-.daze-timer {
+.timers-container {
   position: fixed;
   bottom: 20px;
   right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 1000;
+}
+
+.daze-timer {
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   padding: 12px 16px;
   min-width: 240px;
   max-width: 320px;
-  z-index: 1000;
   font-size: 0.9rem;
 }
 
@@ -1018,4 +1024,275 @@ body {
   color: #007aff;
   font-variant-numeric: tabular-nums;
   animation: pulse 1.5s infinite;
+}
+
+/* Chore stats grid */
+.chore-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stats-card {
+  background: white;
+  border-radius: 10px;
+  padding: 12px 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.stats-card h4 {
+  font-size: 0.82rem;
+  color: #666;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.stats-table td {
+  padding: 3px 0;
+  font-size: 0.85rem;
+}
+
+.stats-table td:first-child {
+  color: #888;
+}
+
+.stats-table .stats-value {
+  text-align: right;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+/* Custom hover tooltip for stats */
+.stats-tooltip-cell {
+  position: relative;
+  width: 0;
+  padding: 0;
+}
+
+.stats-tooltip-wrap {
+  display: none;
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  z-index: 100;
+  padding-bottom: 6px;
+}
+
+.stats-row-hover:hover .stats-tooltip-wrap {
+  display: block;
+}
+
+.stats-tooltip-content {
+  background: #1d1d1f;
+  color: #fff;
+  border-radius: 10px;
+  padding: 12px 16px;
+  min-width: 220px;
+  max-width: 320px;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
+}
+
+.tooltip-bracket {
+  margin-bottom: 8px;
+}
+
+.tooltip-bracket:last-child {
+  margin-bottom: 0;
+}
+
+.tooltip-bracket-header {
+  font-weight: 600;
+  color: #ffd60a;
+  margin-bottom: 2px;
+}
+
+.tooltip-bracket-item {
+  padding-left: 10px;
+  color: #eee;
+}
+
+/* Chore description */
+.chore-description {
+  font-size: 0.85rem;
+  color: #555;
+  background: #f9f9f9;
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin: 6px 0;
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
+.edit-row-full {
+  width: 100%;
+  flex-basis: 100%;
+}
+
+.edit-description {
+  width: 100%;
+  resize: vertical;
+  font-size: 0.85rem;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+/* Running task bar on timeline */
+.timeline-bar.running {
+  animation: pulse 1.5s infinite;
+  box-shadow: 0 0 8px rgba(0, 122, 255, 0.4);
+}
+
+/* Cancel button */
+.btn-cancel {
+  background: #fff0f0;
+  color: #ff3b30;
+  border: 1px solid #ffb3b0;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.btn-cancel:hover {
+  background: #ffe0e0;
+  border-color: #ff8a85;
+}
+
+/* Last done info */
+.chore-last-done {
+  font-size: 0.8rem;
+  color: #888;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* Meal day separator */
+.meal-day-separator {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #555;
+  padding: 10px 0 4px;
+  margin-top: 8px;
+  border-top: 2px solid #e0e0e0;
+}
+
+/* Meal time separator (within today) */
+.meal-mealtime-separator {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #666;
+  padding: 8px 0 2px;
+}
+
+/* Meal card colored left borders by meal time */
+.meal-card.meal-breakfast {
+  border-left-color: #ff9500;
+}
+
+.meal-card.meal-lunch {
+  border-left-color: #34c759;
+}
+
+.meal-card.meal-dinner {
+  border-left-color: #5856d6;
+}
+
+.meal-card.meal-snack {
+  border-left-color: #ff6482;
+}
+
+/* Pause button */
+.btn-pause {
+  background: #fff8e1;
+  color: #f57f17;
+  border: 1px solid #ffcc80;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.btn-pause:hover {
+  background: #ffecb3;
+  border-color: #ffb74d;
+}
+
+.chore-timer.paused {
+  color: #f57f17;
+  animation: none;
+}
+
+/* Batch delete */
+.section-header-with-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.batch-select-all {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: #666;
+  cursor: pointer;
+}
+
+.batch-select-all input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.btn-danger {
+  background: #ff3b30;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-danger:hover {
+  background: #d63027;
+}
+
+.batch-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.batch-checkbox {
+  width: 18px;
+  height: 18px;
+  margin-top: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.batch-item .task-card {
+  flex: 1;
 }

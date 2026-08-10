@@ -10,9 +10,11 @@ export function loadChores(): Chore[] {
     // Migrate old data missing new fields
     return chores.map(c => ({
       ...c,
+      description: c.description ?? '',
       frequencyDays: c.frequencyDays ?? 1,
       skippedDates: c.skippedDates ?? [],
       startedAt: c.startedAt ?? null,
+      pausedElapsed: c.pausedElapsed ?? 0,
       actualMinutes: c.actualMinutes ?? null,
       priority: c.priority ?? ((c.durationMinutes >= 5 && c.durationMinutes <= 10) ? 'high' : 'normal'),
     }));
@@ -31,7 +33,7 @@ export function generateChoreId(): string {
 
 // CSV export for chores
 export function exportChoresToCsv(chores: Chore[]): string {
-  const headers = ['id', 'title', 'scheduledAt', 'durationMinutes', 'actualMinutes', 'startedAt', 'frequencyDays', 'priority', 'skippedDates', 'status', 'createdAt', 'completedAt'];
+  const headers = ['id', 'title', 'description', 'scheduledAt', 'durationMinutes', 'actualMinutes', 'startedAt', 'frequencyDays', 'priority', 'skippedDates', 'status', 'createdAt', 'completedAt'];
   const rows = chores.map(chore =>
     headers.map(h => {
       let value: string | number | string[] | null = chore[h as keyof Chore] ?? '';
@@ -70,10 +72,12 @@ export function importChoresFromCsv(csvContent: string): Chore[] {
     chores.push({
       id: obj.id || generateChoreId(),
       title: obj.title || '',
+      description: obj.description || '',
       scheduledAt: obj.scheduledAt || null,
       durationMinutes: duration,
       actualMinutes: obj.actualMinutes ? parseInt(obj.actualMinutes) : null,
       startedAt: obj.startedAt || null,
+      pausedElapsed: parseInt(obj.pausedElapsed) || 0,
       frequencyDays: parseInt(obj.frequencyDays) || 1,
       priority: (obj.priority as Chore['priority']) || (duration >= 5 && duration <= 10 ? 'high' : 'normal'),
       skippedDates: obj.skippedDates ? obj.skippedDates.split(';').filter(Boolean) : [],

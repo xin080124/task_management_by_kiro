@@ -1,9 +1,39 @@
 import { useState, useEffect, useRef } from 'react';
-import { loadDazeRecords, saveDazeRecords, generateDazeId } from '../dazeStore';
-import type { DazeRecord } from '../dazeStore';
 
-export default function DazeTimer() {
-  const [records, setRecords] = useState<DazeRecord[]>([]);
+export interface TimerRecord {
+  id: string;
+  startedAt: string;
+  endedAt: string;
+  durationSeconds: number;
+}
+
+interface Props {
+  storageKey: string;
+  icon: string;
+  title: string;
+  resetOnStop?: boolean; // true = 不累积，每次结束后清除记录
+}
+
+function loadRecords(key: string): TimerRecord[] {
+  try {
+    const data = localStorage.getItem(key);
+    if (!data) return [];
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
+}
+
+function saveRecords(key: string, records: TimerRecord[]): void {
+  localStorage.setItem(key, JSON.stringify(records));
+}
+
+function generateId(): string {
+  return 'tm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+export default function DazeTimer({ storageKey, icon, title, resetOnStop }: Props) {
+  const [records, setRecords] = useState<TimerRecord[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -11,8 +41,8 @@ export default function DazeTimer() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    setRecords(loadDazeRecords());
-  }, []);
+    setRecords(loadRecords(storageKey));
+  }, [storageKey]);
 
   useEffect(() => {
     if (isRunning && startTime !== null) {
@@ -41,16 +71,22 @@ export default function DazeTimer() {
     const endTime = Date.now();
     const duration = Math.floor((endTime - startTime) / 1000);
 
-    const record: DazeRecord = {
-      id: generateDazeId(),
+    const record: TimerRecord = {
+      id: generateId(),
       startedAt: new Date(startTime).toISOString(),
       endedAt: new Date(endTime).toISOString(),
       durationSeconds: duration,
     };
 
-    const updated = [...records, record];
-    setRecords(updated);
-    saveDazeRecords(updated);
+    if (resetOnStop) {
+      // Don't accumulate — only keep this one record, then clear on next start
+      setRecords([record]);
+      saveRecords(storageKey, [record]);
+    } else {
+      const updated = [...records, record];
+      setRecords(updated);
+      saveRecords(storageKey, updated);
+    }
 
     setIsRunning(false);
     setStartTime(null);
@@ -60,15 +96,13 @@ export default function DazeTimer() {
   const handleDelete = (id: string) => {
     const updated = records.filter(r => r.id !== id);
     setRecords(updated);
-    saveDazeRecords(updated);
+    saveRecords(storageKey, updated);
   };
 
-  // Group records by date and sum durations
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayRecords = records.filter(r => r.startedAt.slice(0, 10) === todayStr);
   const todayTotal = todayRecords.reduce((s, r) => s + r.durationSeconds, 0);
 
-  // Last 7 days stats
   const dailyStats: { date: string; total: number }[] = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
@@ -96,17 +130,17 @@ export default function DazeTimer() {
   return (
     <div className="daze-timer">
       <div className="daze-header" onClick={() => setExpanded(!expanded)}>
-        <span className="daze-icon">😶‍🌫️</span>
-        <span className="daze-title">发呆计时器</span>
+        <span className="daze-icon">{icon}</span>
+        <span className="daze-title">{title}</span>
         <span className="daze-today-total">今日: {formatDuration(todayTotal)}</span>
         <span className="daze-expand">{expanded ? '▼' : '▶'}</span>
       </div>
 
       <div className="daze-controls">
         {!isRunning ? (
-          <button className="btn btn-daze-start" onClick={handleStart}>▶ 开始发呆</button>
+          <button className="btn btn-daze-start" onClick={handleStart}>▶ 开始计时</button>
         ) : (
-          <button className="btn btn-daze-stop" onClick={handleStop}>⏹ 结束发呆</button>
+          <button className="btn btn-daze-stop" onClick={handleStop}>⏹ 结束计时</button>
         )}
         {isRunning && (
           <span className="daze-elapsed">{formatDuration(elapsed)}</span>
@@ -116,7 +150,7 @@ export default function DazeTimer() {
       {expanded && (
         <div className="daze-details">
           <div className="daze-stats">
-            <h4>近7天发呆时长</h4>
+            <h4>近7天时长</h4>
             {dailyStats.map(({ date, total }) => (
               <div key={date} className="daze-stat-row">
                 <span className="daze-stat-date">{date === todayStr ? '今天' : date.slice(5)}</span>

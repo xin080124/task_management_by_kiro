@@ -68,7 +68,12 @@ function App() {
       {page === 'meals' && <MealPage />}
       {page === 'work' && <WorkPage />}
 
-      <DazeTimer />
+      <div className="timers-container">
+        <DazeTimer storageKey="task-manager-daze" icon="😶‍🌫️" title="发呆/外散" />
+        <DazeTimer storageKey="task-manager-thoughts" icon="💭" title="起心动念" resetOnStop />
+        <DazeTimer storageKey="task-manager-pt" icon="🧘" title="PT计时器" resetOnStop />
+        <DazeTimer storageKey="task-manager-interrupt" icon="🚨" title="被挟持/被打扰" resetOnStop />
+      </div>
     </div>
   );
 }
