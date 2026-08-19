@@ -494,6 +494,14 @@ export default function WorkPage() {
           </div>
         )}
 
+        {selectedForDelete.size > 0 && (
+          <div className="batch-delete-bar">
+            <span>已选中 {selectedForDelete.size} 项</span>
+            <button className="btn btn-danger" onClick={handleBatchDelete}>🗑 批量删除</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedForDelete(new Set())}>取消选择</button>
+          </div>
+        )}
+
         {entries.length === 0 && (
           <div className="empty-state">
             <p>还没有工作记录，点击上方"添加任务"开始吧</p>

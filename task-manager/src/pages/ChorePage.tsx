@@ -625,6 +625,14 @@ export default function ChorePage() {
           </div>
         )}
 
+        {selectedForDelete.size > 0 && (
+          <div className="batch-delete-bar">
+            <span>已选中 {selectedForDelete.size} 项</span>
+            <button className="btn btn-danger" onClick={handleBatchDelete}>🗑 批量删除</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedForDelete(new Set())}>取消选择</button>
+          </div>
+        )}
+
         {chores.length === 0 && (
           <div className="empty-state">
             <p>还没有家务，点击上方"添加家务"开始吧</p>

@@ -14,6 +14,7 @@ export default function MealPage() {
   const [meals, setMeals] = useState<Meal[]>([]);
   const [initialized, setInitialized] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form state
@@ -190,6 +191,31 @@ export default function MealPage() {
     if (confirm('确定删除这道菜？')) {
       setMeals(prev => prev.filter(m => m.id !== id));
     }
+  }, []);
+
+  const handleBatchDelete = useCallback(() => {
+    if (selectedForDelete.size === 0) return;
+    if (confirm(`确定删除选中的 ${selectedForDelete.size} 项？`)) {
+      setMeals(prev => prev.filter(m => !selectedForDelete.has(m.id)));
+      setSelectedForDelete(new Set());
+    }
+  }, [selectedForDelete]);
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedForDelete(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback((ids: string[]) => {
+    setSelectedForDelete(prev => {
+      const allSelected = ids.every(id => prev.has(id));
+      if (allSelected) return new Set();
+      return new Set(ids);
+    });
   }, []);
 
   const handleEdit = useCallback((id: string, updates: Partial<Pick<Meal, 'dish' | 'prepMinutes' | 'frequencyDays' | 'mealTime' | 'scheduledDate'>>) => {
@@ -400,10 +426,29 @@ export default function MealPage() {
 
         {doneMeals.length > 0 && (
           <div className="task-section">
-            <h3>✅ 已完成 ({doneMeals.length})</h3>
+            <div className="section-header-with-actions">
+              <h3>✅ 已完成 ({doneMeals.length})</h3>
+              <div className="batch-actions">
+                <label className="batch-select-all">
+                  <input type="checkbox" checked={doneMeals.length > 0 && doneMeals.every(m => selectedForDelete.has(m.id))} onChange={() => toggleSelectAll(doneMeals.map(m => m.id))} />
+                  全选
+                </label>
+              </div>
+            </div>
             {doneMeals.map(meal => (
-              <MealCard key={meal.id} meal={meal} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
+              <div key={meal.id} className="batch-item">
+                <input type="checkbox" className="batch-checkbox" checked={selectedForDelete.has(meal.id)} onChange={() => toggleSelect(meal.id)} />
+                <MealCard meal={meal} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
+              </div>
             ))}
+          </div>
+        )}
+
+        {selectedForDelete.size > 0 && (
+          <div className="batch-delete-bar">
+            <span>已选中 {selectedForDelete.size} 项</span>
+            <button className="btn btn-danger" onClick={handleBatchDelete}>🗑 批量删除</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedForDelete(new Set())}>取消选择</button>
           </div>
         )}
 
