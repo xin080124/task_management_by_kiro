@@ -410,7 +410,7 @@ export default function WorkPage() {
               type="number"
               value={newDuration}
               onChange={e => setNewDuration(parseInt(e.target.value) || 60)}
-              min={5}
+              min={1}
               max={480}
               className="form-input"
             />
@@ -464,9 +464,20 @@ export default function WorkPage() {
 
         {skippedEntries.length > 0 && (
           <div className="task-section">
-            <h3>⏭️ 已跳过 ({skippedEntries.length})</h3>
+            <div className="section-header-with-actions">
+              <h3>⏭️ 已跳过 ({skippedEntries.length})</h3>
+              <div className="batch-actions">
+                <label className="batch-select-all">
+                  <input type="checkbox" checked={skippedEntries.length > 0 && skippedEntries.every(e => selectedForDelete.has(e.id))} onChange={() => toggleSelectAll(skippedEntries.map(e => e.id))} />
+                  全选
+                </label>
+              </div>
+            </div>
             {skippedEntries.map(entry => (
-              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
+              <div key={entry.id} className="batch-item">
+                <input type="checkbox" className="batch-checkbox" checked={selectedForDelete.has(entry.id)} onChange={() => toggleSelect(entry.id)} />
+                <WorkCard entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
+              </div>
             ))}
           </div>
         )}
@@ -633,7 +644,7 @@ function WorkCard({ entry, onStart, onPause, onResume, onComplete, onSkip, onDel
           </div>
           <div className="edit-row">
             <label>预估(分)</label>
-            <input type="number" value={editDuration} onChange={e => setEditDuration(parseInt(e.target.value) || 60)} min={5} max={480} className="form-input-sm" />
+            <input type="number" value={editDuration} onChange={e => setEditDuration(parseInt(e.target.value) || 60)} min={1} max={480} className="form-input-sm" />
           </div>
           <div className="edit-row">
             <label>频率(天)</label>

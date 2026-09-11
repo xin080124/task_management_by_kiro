@@ -3,10 +3,12 @@ import ReviewPage from './pages/ReviewPage';
 import ChorePage from './pages/ChorePage';
 import MealPage from './pages/MealPage';
 import WorkPage from './pages/WorkPage';
+import ProjectPage from './pages/ProjectPage';
+import ListenPage from './pages/ListenPage';
 import DazeTimer from './components/DazeTimer';
 import './App.css';
 
-type Page = 'review' | 'chores' | 'meals' | 'work';
+type Page = 'review' | 'chores' | 'meals' | 'work' | 'projects' | 'listen';
 
 function App() {
   const [page, setPage] = useState<Page>(() => {
@@ -14,6 +16,8 @@ function App() {
     if (hash === 'chores') return 'chores';
     if (hash === 'meals') return 'meals';
     if (hash === 'work') return 'work';
+    if (hash === 'projects') return 'projects';
+    if (hash === 'listen') return 'listen';
     return 'review';
   });
 
@@ -23,6 +27,8 @@ function App() {
       if (hash === 'chores') setPage('chores');
       else if (hash === 'meals') setPage('meals');
       else if (hash === 'work') setPage('work');
+      else if (hash === 'projects') setPage('projects');
+      else if (hash === 'listen') setPage('listen');
       else setPage('review');
     };
     window.addEventListener('hashchange', handleHash);
@@ -61,16 +67,30 @@ function App() {
         >
           💼 工作
         </button>
+        <button
+          className={`page-tab ${page === 'projects' ? 'active' : ''}`}
+          onClick={() => navigate('projects')}
+        >
+          🏡 项目
+        </button>
+        <button
+          className={`page-tab ${page === 'listen' ? 'active' : ''}`}
+          onClick={() => navigate('listen')}
+        >
+          👂 听力
+        </button>
       </nav>
 
       {page === 'review' && <ReviewPage />}
       {page === 'chores' && <ChorePage />}
       {page === 'meals' && <MealPage />}
       {page === 'work' && <WorkPage />}
+      {page === 'projects' && <ProjectPage />}
+      {page === 'listen' && <ListenPage />}
 
       <div className="timers-container">
         <DazeTimer storageKey="task-manager-daze" icon="😶‍🌫️" title="发呆/外散" />
-        <DazeTimer storageKey="task-manager-thoughts" icon="💭" title="起心动念" resetOnStop />
+        <DazeTimer storageKey="task-manager-thoughts" icon="💭" title="违缘+起心动念" withNote retainDays={3} />
         <DazeTimer storageKey="task-manager-pt" icon="🧘" title="PT计时器" resetOnStop />
         <DazeTimer storageKey="task-manager-interrupt" icon="🚨" title="被挟持/被打扰" resetOnStop />
       </div>

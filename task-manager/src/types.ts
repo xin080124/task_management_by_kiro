@@ -87,3 +87,52 @@ export interface WorkEntry {
   createdAt: string;
   completedAt: string | null;
 }
+
+// ===== Family Project types =====
+
+export type MilestoneStatus = 'todo' | 'in-progress' | 'done';
+
+export interface Milestone {
+  id: string;
+  title: string;
+  status: MilestoneStatus;
+  dueDate: string | null; // ISO date string
+  completedAt: string | null;
+  createdAt: string;
+}
+
+export type StoryStatus = 'active' | 'done' | 'on-hold';
+
+export interface Story {
+  id: string;
+  title: string;
+  description: string;
+  status: StoryStatus;
+  milestones: Milestone[];
+  createdAt: string;
+  completedAt: string | null;
+}
+
+// ===== Listening Practice types =====
+
+export type ListenStatus = 'open' | 'p1' | 'p2' | 'p3' | 'p4' | 'p5';
+
+export interface ListenItem {
+  id: string;
+  text: string; // 要听的句子
+  translation: string; // 中文翻译（可选提示）
+  lang: string; // 语音语言 e.g. 'en-US', 'ja-JP'
+  status: ListenStatus;
+  nextReviewDate: string;
+  createdAt: string;
+  lastReviewedAt: string | null;
+}
+
+export const LISTEN_INTERVALS: Record<ListenStatus, number> = {
+  open: 0,
+  p1: 1,
+  p2: 3,
+  p3: 7,
+  p4: 14,
+  p5: 30,
+};

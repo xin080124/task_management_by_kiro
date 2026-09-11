@@ -340,7 +340,7 @@ export default function MealPage() {
               type="number"
               value={newPrepMinutes}
               onChange={e => setNewPrepMinutes(parseInt(e.target.value) || 30)}
-              min={5}
+              min={1}
               max={480}
               className="form-input"
             />
@@ -417,9 +417,20 @@ export default function MealPage() {
 
         {skippedMeals.length > 0 && (
           <div className="task-section">
-            <h3>⏭️ 已跳过 ({skippedMeals.length})</h3>
+            <div className="section-header-with-actions">
+              <h3>⏭️ 已跳过 ({skippedMeals.length})</h3>
+              <div className="batch-actions">
+                <label className="batch-select-all">
+                  <input type="checkbox" checked={skippedMeals.length > 0 && skippedMeals.every(m => selectedForDelete.has(m.id))} onChange={() => toggleSelectAll(skippedMeals.map(m => m.id))} />
+                  全选
+                </label>
+              </div>
+            </div>
             {skippedMeals.map(meal => (
-              <MealCard key={meal.id} meal={meal} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
+              <div key={meal.id} className="batch-item">
+                <input type="checkbox" className="batch-checkbox" checked={selectedForDelete.has(meal.id)} onChange={() => toggleSelect(meal.id)} />
+                <MealCard meal={meal} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
+              </div>
             ))}
           </div>
         )}
@@ -547,7 +558,7 @@ function MealCard({ meal, onComplete, onSkip, onDelete, onEdit }: MealCardProps)
           </div>
           <div className="edit-row">
             <label>时长</label>
-            <input type="number" value={editPrep} onChange={e => setEditPrep(parseInt(e.target.value) || 30)} min={5} max={480} className="form-input-sm" />
+            <input type="number" value={editPrep} onChange={e => setEditPrep(parseInt(e.target.value) || 30)} min={1} max={480} className="form-input-sm" />
           </div>
           <div className="edit-row">
             <label>频率(天)</label>

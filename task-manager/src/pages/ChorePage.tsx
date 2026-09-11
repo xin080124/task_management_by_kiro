@@ -8,6 +8,7 @@ export default function ChorePage() {
   const [initialized, setInitialized] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
+  const [expandedStat, setExpandedStat] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form state
@@ -153,24 +154,35 @@ export default function ChorePage() {
         const freq = completed.frequencyDays ?? 1;
         const prevTime = new Date(completed.scheduledAt);
         const nextTime = new Date(prevTime.getTime() + freq * 24 * 60 * 60 * 1000);
+        const nextDateStr = nextTime.toISOString().slice(0, 10);
 
-        const nextChore: Chore = {
-          id: generateChoreId(),
-          title: completed.title,
-          description: '',
-          scheduledAt: nextTime.toISOString(),
-          durationMinutes: completed.durationMinutes,
-          actualMinutes: null,
-          startedAt: null,
-          pausedElapsed: 0,
-          frequencyDays: freq,
-          priority: completed.priority ?? 'normal',
-          skippedDates: completed.skippedDates ?? [],
-          status: 'scheduled',
-          createdAt: new Date().toISOString(),
-          completedAt: null,
-        };
-        updated.push(nextChore);
+        // Prevent duplicate: check if a same-title task already exists for that day
+        const alreadyExists = updated.some(c =>
+          c.title === completed.title &&
+          c.id !== id &&
+          c.status !== 'done' && c.status !== 'skipped' &&
+          c.scheduledAt && c.scheduledAt.slice(0, 10) === nextDateStr
+        );
+
+        if (!alreadyExists) {
+          const nextChore: Chore = {
+            id: generateChoreId(),
+            title: completed.title,
+            description: '',
+            scheduledAt: nextTime.toISOString(),
+            durationMinutes: completed.durationMinutes,
+            actualMinutes: null,
+            startedAt: null,
+            pausedElapsed: 0,
+            frequencyDays: freq,
+            priority: completed.priority ?? 'normal',
+            skippedDates: completed.skippedDates ?? [],
+            status: 'scheduled',
+            createdAt: new Date().toISOString(),
+            completedAt: null,
+          };
+          updated.push(nextChore);
+        }
       }
 
       return updated;
@@ -194,24 +206,34 @@ export default function ChorePage() {
         const freq = skipped.frequencyDays ?? 1;
         const prevTime = new Date(skipped.scheduledAt);
         const nextTime = new Date(prevTime.getTime() + freq * 24 * 60 * 60 * 1000);
+        const nextDateStr = nextTime.toISOString().slice(0, 10);
 
-        const nextChore: Chore = {
-          id: generateChoreId(),
-          title: skipped.title,
-          description: '',
-          scheduledAt: nextTime.toISOString(),
-          durationMinutes: skipped.durationMinutes,
-          actualMinutes: null,
-          startedAt: null,
-          pausedElapsed: 0,
-          frequencyDays: freq,
-          priority: skipped.priority ?? 'normal',
-          skippedDates: skipped.skippedDates ?? [],
-          status: 'scheduled',
-          createdAt: new Date().toISOString(),
-          completedAt: null,
-        };
-        updated.push(nextChore);
+        const alreadyExists = updated.some(c =>
+          c.title === skipped.title &&
+          c.id !== id &&
+          c.status !== 'done' && c.status !== 'skipped' &&
+          c.scheduledAt && c.scheduledAt.slice(0, 10) === nextDateStr
+        );
+
+        if (!alreadyExists) {
+          const nextChore: Chore = {
+            id: generateChoreId(),
+            title: skipped.title,
+            description: '',
+            scheduledAt: nextTime.toISOString(),
+            durationMinutes: skipped.durationMinutes,
+            actualMinutes: null,
+            startedAt: null,
+            pausedElapsed: 0,
+            frequencyDays: freq,
+            priority: skipped.priority ?? 'normal',
+            skippedDates: skipped.skippedDates ?? [],
+            status: 'scheduled',
+            createdAt: new Date().toISOString(),
+            completedAt: null,
+          };
+          updated.push(nextChore);
+        }
       }
 
       return updated;
@@ -437,23 +459,37 @@ export default function ChorePage() {
       <div className="chore-stats-grid">
         <div className="stats-card">
           <h4>📅 待办时长</h4>
-          <table className="stats-table">
-            <tbody>
-              <tr className="stats-row-hover"><td>今天</td><td className="stats-value">{formatMinutes(todayPlan.total)}</td><td className="stats-tooltip-cell"><div className="stats-tooltip-wrap"><div className="stats-tooltip-content">{makeTooltip(todayPlan.items)}</div></div></td></tr>
-              <tr className="stats-row-hover"><td>明天</td><td className="stats-value">{formatMinutes(tomorrowPlan.total)}</td><td className="stats-tooltip-cell"><div className="stats-tooltip-wrap"><div className="stats-tooltip-content">{makeTooltip(tomorrowPlan.items)}</div></div></td></tr>
-              <tr className="stats-row-hover"><td>后天</td><td className="stats-value">{formatMinutes(dayAfterPlan.total)}</td><td className="stats-tooltip-cell"><div className="stats-tooltip-wrap"><div className="stats-tooltip-content">{makeTooltip(dayAfterPlan.items)}</div></div></td></tr>
-            </tbody>
-          </table>
+          {([
+            { key: 'plan-0', label: '今天', data: todayPlan },
+            { key: 'plan-1', label: '明天', data: tomorrowPlan },
+            { key: 'plan-2', label: '后天', data: dayAfterPlan },
+          ]).map(({ key, label, data }) => (
+            <div key={key} className="stats-collapse">
+              <div className="stats-collapse-header" onClick={() => setExpandedStat(expandedStat === key ? null : key)}>
+                <span className="stats-collapse-arrow">{expandedStat === key ? '▼' : '▶'}</span>
+                <span className="stats-collapse-label">{label}</span>
+                <span className="stats-collapse-value">{formatMinutes(data.total)}</span>
+              </div>
+              {expandedStat === key && <div className="stats-collapse-body">{makeTooltip(data.items)}</div>}
+            </div>
+          ))}
         </div>
         <div className="stats-card">
           <h4>✅ 已完成时长</h4>
-          <table className="stats-table">
-            <tbody>
-              <tr className="stats-row-hover"><td>今天</td><td className="stats-value">{formatMinutes(todayDone.total)}</td><td className="stats-tooltip-cell"><div className="stats-tooltip-wrap"><div className="stats-tooltip-content">{makeTooltip(todayDone.items)}</div></div></td></tr>
-              <tr className="stats-row-hover"><td>昨天</td><td className="stats-value">{formatMinutes(yesterdayDone.total)}</td><td className="stats-tooltip-cell"><div className="stats-tooltip-wrap"><div className="stats-tooltip-content">{makeTooltip(yesterdayDone.items)}</div></div></td></tr>
-              <tr className="stats-row-hover"><td>前天</td><td className="stats-value">{formatMinutes(dayBeforeDone.total)}</td><td className="stats-tooltip-cell"><div className="stats-tooltip-wrap"><div className="stats-tooltip-content">{makeTooltip(dayBeforeDone.items)}</div></div></td></tr>
-            </tbody>
-          </table>
+          {([
+            { key: 'done-0', label: '今天', data: todayDone },
+            { key: 'done-1', label: '昨天', data: yesterdayDone },
+            { key: 'done-2', label: '前天', data: dayBeforeDone },
+          ]).map(({ key, label, data }) => (
+            <div key={key} className="stats-collapse">
+              <div className="stats-collapse-header" onClick={() => setExpandedStat(expandedStat === key ? null : key)}>
+                <span className="stats-collapse-arrow">{expandedStat === key ? '▼' : '▶'}</span>
+                <span className="stats-collapse-label">{label}</span>
+                <span className="stats-collapse-value">{formatMinutes(data.total)}</span>
+              </div>
+              {expandedStat === key && <div className="stats-collapse-body">{makeTooltip(data.items)}</div>}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -501,7 +537,7 @@ export default function ChorePage() {
               type="number"
               value={newDuration}
               onChange={e => setNewDuration(parseInt(e.target.value) || 30)}
-              min={5}
+              min={1}
               max={480}
               className="form-input"
             />
@@ -593,10 +629,21 @@ export default function ChorePage() {
 
         {skippedChores.length > 0 && (
           <div className="task-section">
-            <h3>⏭️ 已跳过 ({skippedChores.length})</h3>
+            <div className="section-header-with-actions">
+              <h3>⏭️ 已跳过 ({skippedChores.length})</h3>
+              <div className="batch-actions">
+                <label className="batch-select-all">
+                  <input type="checkbox" checked={skippedChores.length > 0 && skippedChores.every(c => selectedForDelete.has(c.id))} onChange={() => toggleSelectAll(skippedChores.map(c => c.id))} />
+                  全选
+                </label>
+              </div>
+            </div>
             {skippedChores.map(chore => (
-              <ChoreCard key={chore.id} chore={chore} category="skipped" formatTime={formatTime}
-                onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} allChores={chores} />
+              <div key={chore.id} className="batch-item">
+                <input type="checkbox" className="batch-checkbox" checked={selectedForDelete.has(chore.id)} onChange={() => toggleSelect(chore.id)} />
+                <ChoreCard chore={chore} category="skipped" formatTime={formatTime}
+                  onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} allChores={chores} />
+              </div>
             ))}
           </div>
         )}
@@ -754,7 +801,7 @@ function ChoreCard({ chore, category, formatTime, onComplete, onSkip, onDelete, 
           </div>
           <div className="edit-row">
             <label>时长(分钟)</label>
-            <input type="number" value={editDuration} onChange={e => setEditDuration(parseInt(e.target.value) || 30)} min={5} max={480} className="form-input-sm" />
+            <input type="number" value={editDuration} onChange={e => setEditDuration(parseInt(e.target.value) || 30)} min={1} max={480} className="form-input-sm" />
           </div>
           <div className="edit-row">
             <label>频率(每N天)</label>

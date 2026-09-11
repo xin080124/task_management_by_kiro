@@ -5,6 +5,7 @@ export interface TimerRecord {
   startedAt: string;
   endedAt: string;
   durationSeconds: number;
+  note?: string; // 思维火花备注
 }
 
 interface Props {
@@ -12,6 +13,8 @@ interface Props {
   icon: string;
   title: string;
   resetOnStop?: boolean; // true = 不累积，每次结束后清除记录
+  withNote?: boolean; // true = 显示备注文本框
+  retainDays?: number; // 保留最近 N 天的记录，超过的自动清除
 }
 
 function loadRecords(key: string): TimerRecord[] {
@@ -32,17 +35,24 @@ function generateId(): string {
   return 'tm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-export default function DazeTimer({ storageKey, icon, title, resetOnStop }: Props) {
+export default function DazeTimer({ storageKey, icon, title, resetOnStop, withNote, retainDays }: Props) {
   const [records, setRecords] = useState<TimerRecord[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [expanded, setExpanded] = useState(false);
+  const [note, setNote] = useState('');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    setRecords(loadRecords(storageKey));
-  }, [storageKey]);
+    let loaded = loadRecords(storageKey);
+    if (retainDays) {
+      const cutoff = Date.now() - retainDays * 24 * 60 * 60 * 1000;
+      loaded = loaded.filter(r => new Date(r.startedAt).getTime() >= cutoff);
+      saveRecords(storageKey, loaded);
+    }
+    setRecords(loaded);
+  }, [storageKey, retainDays]);
 
   useEffect(() => {
     if (isRunning && startTime !== null) {
@@ -76,6 +86,7 @@ export default function DazeTimer({ storageKey, icon, title, resetOnStop }: Prop
       startedAt: new Date(startTime).toISOString(),
       endedAt: new Date(endTime).toISOString(),
       durationSeconds: duration,
+      note: note.trim() || undefined,
     };
 
     if (resetOnStop) {
@@ -83,7 +94,12 @@ export default function DazeTimer({ storageKey, icon, title, resetOnStop }: Prop
       setRecords([record]);
       saveRecords(storageKey, [record]);
     } else {
-      const updated = [...records, record];
+      let updated = [...records, record];
+      // Prune records older than retainDays
+      if (retainDays) {
+        const cutoff = Date.now() - retainDays * 24 * 60 * 60 * 1000;
+        updated = updated.filter(r => new Date(r.startedAt).getTime() >= cutoff);
+      }
       setRecords(updated);
       saveRecords(storageKey, updated);
     }
@@ -91,6 +107,7 @@ export default function DazeTimer({ storageKey, icon, title, resetOnStop }: Prop
     setIsRunning(false);
     setStartTime(null);
     setElapsed(0);
+    setNote('');
   };
 
   const handleDelete = (id: string) => {
@@ -136,6 +153,17 @@ export default function DazeTimer({ storageKey, icon, title, resetOnStop }: Prop
         <span className="daze-expand">{expanded ? '▼' : '▶'}</span>
       </div>
 
+      {withNote && (
+        <input
+          type="text"
+          className="daze-note-input"
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="💡 先记录思维的火花，再点开始..."
+          disabled={isRunning}
+        />
+      )}
+
       <div className="daze-controls">
         {!isRunning ? (
           <button className="btn btn-daze-start" onClick={handleStart}>▶ 开始计时</button>
@@ -165,9 +193,12 @@ export default function DazeTimer({ storageKey, icon, title, resetOnStop }: Prop
               <h4>今日记录</h4>
               {todayRecords.map(r => (
                 <div key={r.id} className="daze-record-item">
-                  <span>{formatTime(r.startedAt)} ~ {formatTime(r.endedAt)}</span>
-                  <span className="daze-record-duration">{formatDuration(r.durationSeconds)}</span>
-                  <button className="btn-delete" onClick={() => handleDelete(r.id)} title="删除">✕</button>
+                  <div className="daze-record-main">
+                    <span>{formatTime(r.startedAt)} ~ {formatTime(r.endedAt)}</span>
+                    <span className="daze-record-duration">{formatDuration(r.durationSeconds)}</span>
+                    <button className="btn-delete" onClick={() => handleDelete(r.id)} title="删除">✕</button>
+                  </div>
+                  {r.note && <div className="daze-record-note">💡 {r.note}</div>}
                 </div>
               ))}
             </div>

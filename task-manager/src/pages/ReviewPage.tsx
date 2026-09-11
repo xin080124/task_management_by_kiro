@@ -76,6 +76,12 @@ export default function ReviewPage() {
     }
   }, []);
 
+  const handleEdit = useCallback((id: string, updates: Partial<Pick<Task, 'question' | 'answer'>>) => {
+    setTasks(prev => prev.map(t =>
+      t.id === id ? { ...t, ...updates } : t
+    ));
+  }, []);
+
   const handleImport = (imported: Task[]) => {
     setTasks(prev => {
       const existing = new Map(prev.map(t => [t.id, t]));
@@ -110,7 +116,7 @@ export default function ReviewPage() {
       </nav>
 
       {showAddForm && <AddTaskForm onAdd={handleAdd} onCancel={() => setShowAddForm(false)} />}
-      <TaskList tasks={tasks} filter={filter} onPass={handlePass} onFail={handleFail} onDelete={handleDelete} />
+      <TaskList tasks={tasks} filter={filter} onPass={handlePass} onFail={handleFail} onDelete={handleDelete} onEdit={handleEdit} />
     </>
   );
 }

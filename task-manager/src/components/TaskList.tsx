@@ -7,9 +7,10 @@ interface Props {
   onPass: (id: string) => void;
   onFail: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (id: string, updates: Partial<Pick<Task, 'question' | 'answer'>>) => void;
 }
 
-export default function TaskList({ tasks, filter, onPass, onFail, onDelete }: Props) {
+export default function TaskList({ tasks, filter, onPass, onFail, onDelete, onEdit }: Props) {
   const filtered = tasks.filter(t => filter === 'all' || t.type === filter);
 
   // Separate open (due) tasks from waiting tasks
@@ -23,7 +24,7 @@ export default function TaskList({ tasks, filter, onPass, onFail, onDelete }: Pr
         <div className="task-section">
           <h3>待复习 ({openTasks.length})</h3>
           {openTasks.map(task => (
-            <TaskCard key={task.id} task={task} onPass={onPass} onFail={onFail} onDelete={onDelete} />
+            <TaskCard key={task.id} task={task} onPass={onPass} onFail={onFail} onDelete={onDelete} onEdit={onEdit} />
           ))}
         </div>
       )}
@@ -32,7 +33,7 @@ export default function TaskList({ tasks, filter, onPass, onFail, onDelete }: Pr
         <div className="task-section">
           <h3>等待中 ({waitingTasks.length})</h3>
           {waitingTasks.map(task => (
-            <TaskCard key={task.id} task={task} onPass={onPass} onFail={onFail} onDelete={onDelete} />
+            <TaskCard key={task.id} task={task} onPass={onPass} onFail={onFail} onDelete={onDelete} onEdit={onEdit} />
           ))}
         </div>
       )}
