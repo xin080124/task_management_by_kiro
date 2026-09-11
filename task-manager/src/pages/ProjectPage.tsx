@@ -12,6 +12,8 @@ export default function ProjectPage() {
   // Form state
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [newFrequency, setNewFrequency] = useState(1);
+  const [newScheduledAt, setNewScheduledAt] = useState('');
 
   useEffect(() => {
     setStories(loadStories());
@@ -42,15 +44,21 @@ export default function ProjectPage() {
       milestones: [],
       createdAt: new Date().toISOString(),
       completedAt: null,
+      frequencyDays: newFrequency,
+      scheduledAt: newScheduledAt ? new Date(newScheduledAt).toISOString() : null,
+      checkins: [],
+      lastCheckinAt: null,
     };
     setStories(prev => [...prev, story]);
     setNewTitle('');
     setNewDescription('');
+    setNewFrequency(1);
+    setNewScheduledAt('');
     setShowAddForm(false);
   };
 
   const handleDeleteStory = useCallback((id: string) => {
-    if (confirm('确定删除这个项目？所有里程碑也会被删除。')) {
+    if (confirm('确定删除这个项目？所有里程碑和打卡记录也会被删除。')) {
       setStories(prev => prev.filter(s => s.id !== id));
     }
   }, []);
@@ -61,9 +69,33 @@ export default function ProjectPage() {
     ));
   }, []);
 
-  const handleEditStory = useCallback((id: string, updates: Partial<Pick<Story, 'title' | 'description'>>) => {
+  const handleEditStory = useCallback((id: string, updates: Partial<Pick<Story, 'title' | 'description' | 'frequencyDays'>>) => {
     setStories(prev => prev.map(s =>
       s.id === id ? { ...s, ...updates } : s
+    ));
+  }, []);
+
+  // 打卡：记录一次打卡，并按频率排下一次
+  const handleCheckin = useCallback((id: string) => {
+    setStories(prev => prev.map(s => {
+      if (s.id !== id) return s;
+      const now = new Date();
+      const freq = s.frequencyDays ?? 1;
+      // 下次打卡时间：以当前排程时间或现在为基准 + freq 天
+      const base = s.scheduledAt ? new Date(s.scheduledAt) : now;
+      const next = new Date(Math.max(base.getTime(), now.getTime()) + freq * 24 * 60 * 60 * 1000);
+      return {
+        ...s,
+        checkins: [...(s.checkins ?? []), now.toISOString()],
+        lastCheckinAt: now.toISOString(),
+        scheduledAt: next.toISOString(),
+      };
+    }));
+  }, []);
+
+  const handleReschedule = useCallback((id: string, newTime: string) => {
+    setStories(prev => prev.map(s =>
+      s.id === id ? { ...s, scheduledAt: newTime ? new Date(newTime).toISOString() : null } : s
     ));
   }, []);
 
@@ -144,12 +176,17 @@ export default function ProjectPage() {
   const doneStories = stories.filter(s => s.status === 'done');
   const onHoldStories = stories.filter(s => s.status === 'on-hold');
 
+  // 今天是否到期需要打卡
+  const now = new Date();
+  const dueForCheckin = activeStories.filter(s => s.scheduledAt && new Date(s.scheduledAt) <= now);
+
   return (
     <>
       <header className="app-header">
         <h1>🏡 家庭项目</h1>
         <div className="stats">
           <span className="stat">进行中: <strong>{activeStories.length}</strong></span>
+          <span className="stat">待打卡: <strong>{dueForCheckin.length}</strong></span>
           <span className="stat">已完成: <strong>{doneStories.length}</strong></span>
           <span className="stat">搁置: <strong>{onHoldStories.length}</strong></span>
         </div>
@@ -177,6 +214,14 @@ export default function ProjectPage() {
             <label htmlFor="story-desc">描述（可选）</label>
             <textarea id="story-desc" value={newDescription} onChange={e => setNewDescription(e.target.value)} placeholder="项目背景和目标..." className="form-input" rows={3} />
           </div>
+          <div className="form-group">
+            <label htmlFor="story-freq">打卡频率（每 N 天）</label>
+            <input id="story-freq" type="number" value={newFrequency} onChange={e => setNewFrequency(parseInt(e.target.value) || 1)} min={1} max={365} className="form-input" />
+          </div>
+          <div className="form-group">
+            <label htmlFor="story-sched">首次打卡时间（可选）</label>
+            <input id="story-sched" type="datetime-local" value={newScheduledAt} onChange={e => setNewScheduledAt(e.target.value)} className="form-input" />
+          </div>
           <div className="form-actions">
             <button type="submit" className="btn btn-primary">添加</button>
             <button type="button" className="btn btn-secondary" onClick={() => setShowAddForm(false)}>取消</button>
@@ -192,7 +237,8 @@ export default function ProjectPage() {
               <StoryCard key={story.id} story={story} expanded={expandedStories.has(story.id)}
                 onToggle={toggleExpand} onDelete={handleDeleteStory} onUpdateStatus={handleUpdateStoryStatus}
                 onEdit={handleEditStory} onAddMilestone={handleAddMilestone}
-                onUpdateMilestone={handleUpdateMilestone} onDeleteMilestone={handleDeleteMilestone} />
+                onUpdateMilestone={handleUpdateMilestone} onDeleteMilestone={handleDeleteMilestone}
+                onCheckin={handleCheckin} onReschedule={handleReschedule} />
             ))}
           </div>
         )}
@@ -204,7 +250,8 @@ export default function ProjectPage() {
               <StoryCard key={story.id} story={story} expanded={expandedStories.has(story.id)}
                 onToggle={toggleExpand} onDelete={handleDeleteStory} onUpdateStatus={handleUpdateStoryStatus}
                 onEdit={handleEditStory} onAddMilestone={handleAddMilestone}
-                onUpdateMilestone={handleUpdateMilestone} onDeleteMilestone={handleDeleteMilestone} />
+                onUpdateMilestone={handleUpdateMilestone} onDeleteMilestone={handleDeleteMilestone}
+                onCheckin={handleCheckin} onReschedule={handleReschedule} />
             ))}
           </div>
         )}
@@ -216,7 +263,8 @@ export default function ProjectPage() {
               <StoryCard key={story.id} story={story} expanded={expandedStories.has(story.id)}
                 onToggle={toggleExpand} onDelete={handleDeleteStory} onUpdateStatus={handleUpdateStoryStatus}
                 onEdit={handleEditStory} onAddMilestone={handleAddMilestone}
-                onUpdateMilestone={handleUpdateMilestone} onDeleteMilestone={handleDeleteMilestone} />
+                onUpdateMilestone={handleUpdateMilestone} onDeleteMilestone={handleDeleteMilestone}
+                onCheckin={handleCheckin} onReschedule={handleReschedule} />
             ))}
           </div>
         )}
@@ -238,27 +286,53 @@ interface StoryCardProps {
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   onUpdateStatus: (id: string, status: StoryStatus) => void;
-  onEdit: (id: string, updates: Partial<Pick<Story, 'title' | 'description'>>) => void;
+  onEdit: (id: string, updates: Partial<Pick<Story, 'title' | 'description' | 'frequencyDays'>>) => void;
   onAddMilestone: (storyId: string, title: string, dueDate: string | null) => void;
   onUpdateMilestone: (storyId: string, msId: string, updates: Partial<Pick<Milestone, 'title' | 'status' | 'dueDate'>>) => void;
   onDeleteMilestone: (storyId: string, msId: string) => void;
+  onCheckin: (id: string) => void;
+  onReschedule: (id: string, time: string) => void;
 }
 
-function StoryCard({ story, expanded, onToggle, onDelete, onUpdateStatus, onEdit, onAddMilestone, onUpdateMilestone, onDeleteMilestone }: StoryCardProps) {
+function StoryCard({ story, expanded, onToggle, onDelete, onUpdateStatus, onEdit, onAddMilestone, onUpdateMilestone, onDeleteMilestone, onCheckin, onReschedule }: StoryCardProps) {
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(story.title);
   const [editDesc, setEditDesc] = useState(story.description);
+  const [editFreq, setEditFreq] = useState(story.frequencyDays ?? 1);
   const [addingMs, setAddingMs] = useState(false);
   const [newMsTitle, setNewMsTitle] = useState('');
   const [newMsDue, setNewMsDue] = useState('');
+  const [editingTime, setEditingTime] = useState(false);
+  const [editTime, setEditTime] = useState('');
 
   const totalMs = story.milestones.length;
   const doneMs = story.milestones.filter(m => m.status === 'done').length;
   const progress = totalMs > 0 ? Math.round((doneMs / totalMs) * 100) : 0;
 
+  const freq = story.frequencyDays ?? 1;
+  const freqLabel = freq === 1 ? '每天打卡' : `每${freq}天打卡`;
+  const checkinCount = (story.checkins ?? []).length;
+
+  // 打卡状态
+  const now = new Date();
+  const isDue = story.scheduledAt ? new Date(story.scheduledAt) <= now : true;
+  const checkedInToday = story.lastCheckinAt
+    ? new Date(story.lastCheckinAt).toDateString() === now.toDateString()
+    : false;
+
+  const formatTime = (isoStr: string) => {
+    const d = new Date(isoStr);
+    return d.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
   const handleSaveEdit = () => {
-    onEdit(story.id, { title: editTitle.trim() || story.title, description: editDesc });
+    onEdit(story.id, { title: editTitle.trim() || story.title, description: editDesc, frequencyDays: editFreq });
     setEditing(false);
+  };
+
+  const handleSaveTime = () => {
+    onReschedule(story.id, editTime);
+    setEditingTime(false);
   };
 
   const handleAddMs = (e: React.FormEvent) => {
@@ -271,7 +345,7 @@ function StoryCard({ story, expanded, onToggle, onDelete, onUpdateStatus, onEdit
   };
 
   return (
-    <div className={`task-card story-card ${story.status}`}>
+    <div className={`task-card story-card ${story.status} ${isDue && story.status === 'active' ? 'overdue' : ''}`}>
       <div className="story-header" onClick={() => onToggle(story.id)}>
         <span className="story-expand-icon">{expanded ? '▼' : '▶'}</span>
         {!editing ? (
@@ -280,6 +354,8 @@ function StoryCard({ story, expanded, onToggle, onDelete, onUpdateStatus, onEdit
           <input type="text" value={editTitle} onChange={e => setEditTitle(e.target.value)} className="form-input-sm edit-title-input" onClick={e => e.stopPropagation()} />
         )}
         <div className="story-meta">
+          <span className="chore-frequency">{freqLabel}</span>
+          {checkinCount > 0 && <span className="story-progress">已打卡 {checkinCount} 次</span>}
           {totalMs > 0 && (
             <span className="story-progress">{doneMs}/{totalMs} ({progress}%)</span>
           )}
@@ -292,6 +368,36 @@ function StoryCard({ story, expanded, onToggle, onDelete, onUpdateStatus, onEdit
           <button className="btn-delete" onClick={e => { e.stopPropagation(); onDelete(story.id); }} title="删除">✕</button>
         </div>
       </div>
+
+      {/* 打卡状态行 */}
+      {story.status !== 'done' && (
+        <div className="chore-actions" onClick={e => e.stopPropagation()}>
+          <button
+            className="btn btn-pass"
+            onClick={() => onCheckin(story.id)}
+            disabled={checkedInToday}
+            title={checkedInToday ? '今天已打卡' : '打卡'}
+          >
+            {checkedInToday ? '✓ 今天已打卡' : '📌 打卡'}
+          </button>
+          {story.scheduledAt && (
+            <span className={`chore-time-info ${isDue ? 'overdue-text' : ''}`}>
+              {isDue ? '⚠️ 应打卡: ' : '下次打卡: '}{formatTime(story.scheduledAt)}
+            </span>
+          )}
+          {!editingTime ? (
+            <button className="btn btn-secondary btn-sm" onClick={() => { setEditingTime(true); setEditTime(''); }}>
+              {story.scheduledAt ? '改时间' : '安排打卡'}
+            </button>
+          ) : (
+            <div className="reschedule-form">
+              <input type="datetime-local" value={editTime} onChange={e => setEditTime(e.target.value)} className="form-input-sm" />
+              <button className="btn btn-primary btn-sm" onClick={handleSaveTime}>确定</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setEditingTime(false)}>取消</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Progress bar */}
       {totalMs > 0 && (
@@ -306,6 +412,10 @@ function StoryCard({ story, expanded, onToggle, onDelete, onUpdateStatus, onEdit
             <label>描述</label>
             <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} className="form-input-sm edit-description" rows={2} />
           </div>
+          <div className="edit-row">
+            <label>打卡频率(每N天)</label>
+            <input type="number" value={editFreq} onChange={e => setEditFreq(parseInt(e.target.value) || 1)} min={1} max={365} className="form-input-sm" />
+          </div>
           <div className="edit-row-actions">
             <button className="btn btn-primary btn-sm" onClick={handleSaveEdit}>保存</button>
             <button className="btn btn-secondary btn-sm" onClick={() => setEditing(false)}>取消</button>
@@ -319,23 +429,32 @@ function StoryCard({ story, expanded, onToggle, onDelete, onUpdateStatus, onEdit
 
       {expanded && (
         <div className="story-milestones">
+          {/* 打卡历史 */}
+          {(story.checkins ?? []).length > 0 && (
+            <div className="checkin-history">
+              <div className="checkin-history-title">打卡记录 ({story.checkins!.length})</div>
+              <div className="checkin-chips">
+                {[...story.checkins!].reverse().slice(0, 20).map((c, i) => (
+                  <span key={i} className="checkin-chip">{formatTime(c)}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Milestone timeline - proportional spacing */}
           {story.milestones.length > 0 && (() => {
-            // Get date for each milestone (use dueDate, then completedAt, then createdAt)
             const getMsDate = (ms: Milestone) => new Date(ms.dueDate || ms.completedAt || ms.createdAt).getTime();
             const sorted = [...story.milestones].sort((a, b) => getMsDate(a) - getMsDate(b));
             const dates = sorted.map(getMsDate);
             const minDate = dates[0];
             const maxDate = dates[dates.length - 1];
             const totalSpan = maxDate - minDate;
-            // Min height per node: 40px, proportional extra based on time gap
             const MIN_GAP = 40;
-            const MAX_EXTRA = 120; // max extra pixels for the longest gap
+            const MAX_EXTRA = 120;
 
             return (
               <div className="milestone-timeline proportional">
                 {sorted.map((ms, idx) => {
-                  // Calculate gap before this node (for spacing)
                   let gapPx = 0;
                   if (idx > 0 && totalSpan > 0) {
                     const timeDiff = dates[idx] - dates[idx - 1];

@@ -9,6 +9,8 @@ export default function ChorePage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
   const [expandedStat, setExpandedStat] = useState<string | null>(null);
+  // 已完成区视图：'list' 列表 | 'title' 按标题分组表格 | 'date' 按日期分组
+  const [doneViewMode, setDoneViewMode] = useState<'list' | 'title' | 'date'>('list');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form state
@@ -77,7 +79,7 @@ export default function ChorePage() {
         projectedChores.push({
           id: `proj-${c.id}-${tDay}`,
           title: c.title,
-          description: '',
+          description: c.description ?? '',
           scheduledAt: t.toISOString(),
           durationMinutes: c.durationMinutes,
           actualMinutes: null,
@@ -168,7 +170,7 @@ export default function ChorePage() {
           const nextChore: Chore = {
             id: generateChoreId(),
             title: completed.title,
-            description: '',
+            description: completed.description ?? '',
             scheduledAt: nextTime.toISOString(),
             durationMinutes: completed.durationMinutes,
             actualMinutes: null,
@@ -219,7 +221,7 @@ export default function ChorePage() {
           const nextChore: Chore = {
             id: generateChoreId(),
             title: skipped.title,
-            description: '',
+            description: skipped.description ?? '',
             scheduledAt: nextTime.toISOString(),
             durationMinutes: skipped.durationMinutes,
             actualMinutes: null,
@@ -268,6 +270,20 @@ export default function ChorePage() {
       const allSelected = ids.every(id => prev.has(id));
       if (allSelected) return new Set();
       return new Set(ids);
+    });
+  }, []);
+
+  // 选择/取消一组 id（按标题或按日期分组的全选）
+  const toggleSelectGroup = useCallback((ids: string[]) => {
+    setSelectedForDelete(prev => {
+      const next = new Set(prev);
+      const allSelected = ids.every(id => next.has(id));
+      if (allSelected) {
+        ids.forEach(id => next.delete(id));
+      } else {
+        ids.forEach(id => next.add(id));
+      }
+      return next;
     });
   }, []);
 
@@ -653,22 +669,51 @@ export default function ChorePage() {
             <div className="section-header-with-actions">
               <h3>✅ 已完成 ({doneChores.length})</h3>
               <div className="batch-actions">
-                <label className="batch-select-all">
-                  <input type="checkbox" checked={doneChores.length > 0 && doneChores.every(c => selectedForDelete.has(c.id))} onChange={() => toggleSelectAll(doneChores.map(c => c.id))} />
-                  全选
-                </label>
+                <div className="view-mode-tabs">
+                  <button className={`view-mode-tab ${doneViewMode === 'list' ? 'active' : ''}`} onClick={() => setDoneViewMode('list')}>列表</button>
+                  <button className={`view-mode-tab ${doneViewMode === 'title' ? 'active' : ''}`} onClick={() => setDoneViewMode('title')}>按标题</button>
+                  <button className={`view-mode-tab ${doneViewMode === 'date' ? 'active' : ''}`} onClick={() => setDoneViewMode('date')}>按日期</button>
+                </div>
+                {doneViewMode === 'list' && (
+                  <label className="batch-select-all">
+                    <input type="checkbox" checked={doneChores.length > 0 && doneChores.every(c => selectedForDelete.has(c.id))} onChange={() => toggleSelectAll(doneChores.map(c => c.id))} />
+                    全选
+                  </label>
+                )}
                 {selectedForDelete.size > 0 && (
                   <button className="btn btn-danger btn-sm" onClick={handleBatchDelete}>删除选中 ({selectedForDelete.size})</button>
                 )}
               </div>
             </div>
-            {doneChores.map(chore => (
+
+            {doneViewMode === 'list' && doneChores.map(chore => (
               <div key={chore.id} className="batch-item">
                 <input type="checkbox" className="batch-checkbox" checked={selectedForDelete.has(chore.id)} onChange={() => toggleSelect(chore.id)} />
                 <ChoreCard chore={chore} category="done" formatTime={formatTime}
                   onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} allChores={chores} />
               </div>
             ))}
+
+            {doneViewMode === 'title' && (
+              <DoneByTitleTable
+                doneChores={doneChores}
+                selected={selectedForDelete}
+                onToggle={toggleSelect}
+                onToggleGroup={toggleSelectGroup}
+                formatTime={formatTime}
+              />
+            )}
+
+            {doneViewMode === 'date' && (
+              <DoneByDateGroups
+                doneChores={doneChores}
+                selected={selectedForDelete}
+                onToggle={toggleSelect}
+                onToggleGroup={toggleSelectGroup}
+                formatTime={formatTime}
+                onDelete={handleDelete}
+              />
+            )}
           </div>
         )}
 
@@ -878,6 +923,174 @@ function ChoreCard({ chore, category, formatTime, onComplete, onSkip, onDelete, 
           </div>
         );
       })()}
+    </div>
+  );
+}
+
+// ===== 按标题分组表格：可看到出现频率超过 10 的 records =====
+interface DoneGroupProps {
+  doneChores: Chore[];
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+  onToggleGroup: (ids: string[]) => void;
+  formatTime: (s: string) => string;
+}
+
+function DoneByTitleTable({ doneChores, selected, onToggle, onToggleGroup, formatTime }: DoneGroupProps) {
+  const [expandedTitle, setExpandedTitle] = useState<string | null>(null);
+  const [onlyFrequent, setOnlyFrequent] = useState(false);
+
+  // 按标题分组
+  const groups = new Map<string, Chore[]>();
+  for (const c of doneChores) {
+    if (!groups.has(c.title)) groups.set(c.title, []);
+    groups.get(c.title)!.push(c);
+  }
+
+  let rows = Array.from(groups.entries()).map(([title, items]) => ({
+    title,
+    items: [...items].sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime()),
+    count: items.length,
+    totalMinutes: items.reduce((s, i) => s + (i.actualMinutes ?? i.durationMinutes), 0),
+  }));
+
+  // 按出现次数降序
+  rows.sort((a, b) => b.count - a.count);
+
+  const frequentRows = rows.filter(r => r.count > 10);
+  if (onlyFrequent) rows = frequentRows;
+
+  const avg = (r: typeof rows[0]) => Math.round(r.totalMinutes / r.count);
+
+  return (
+    <div className="done-title-view">
+      <div className="done-title-toolbar">
+        <label className="batch-select-all">
+          <input type="checkbox" checked={onlyFrequent} onChange={() => setOnlyFrequent(v => !v)} />
+          只看高频（出现 &gt; 10 次）
+        </label>
+        <span className="done-title-hint">共 {rows.length} 类，高频 {frequentRows.length} 类</span>
+      </div>
+      <table className="chore-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>家务标题</th>
+            <th>出现次数</th>
+            <th>总时长</th>
+            <th>平均时长</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => {
+            const ids = r.items.map(i => i.id);
+            const allSelected = ids.every(id => selected.has(id));
+            const isFrequent = r.count > 10;
+            const isExpanded = expandedTitle === r.title;
+            return (
+              <>
+                <tr key={r.title} className={isFrequent ? 'row-frequent' : ''}>
+                  <td>
+                    <input type="checkbox" checked={allSelected} onChange={() => onToggleGroup(ids)} title="按标题全选这一类" />
+                  </td>
+                  <td className="cell-title">
+                    {isFrequent && <span className="freq-badge" title="出现频率超过 10 次">🔥</span>}
+                    {r.title}
+                  </td>
+                  <td className={isFrequent ? 'cell-count frequent' : 'cell-count'}>{r.count}</td>
+                  <td>{r.totalMinutes} 分钟</td>
+                  <td>{avg(r)} 分钟</td>
+                  <td>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setExpandedTitle(isExpanded ? null : r.title)}>
+                      {isExpanded ? '收起' : '展开'}
+                    </button>
+                  </td>
+                </tr>
+                {isExpanded && (
+                  <tr className="detail-row">
+                    <td></td>
+                    <td colSpan={5}>
+                      <table className="chore-subtable">
+                        <thead>
+                          <tr>
+                            <th></th>
+                            <th>完成时间</th>
+                            <th>用时</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {r.items.map(item => (
+                            <tr key={item.id}>
+                              <td>
+                                <input type="checkbox" checked={selected.has(item.id)} onChange={() => onToggle(item.id)} />
+                              </td>
+                              <td>{item.completedAt ? formatTime(item.completedAt) : '-'}</td>
+                              <td>{item.actualMinutes ?? item.durationMinutes} 分钟</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                )}
+              </>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ===== 按日期分组：可按日期全选 =====
+interface DoneByDateProps extends DoneGroupProps {
+  onDelete: (id: string) => void;
+}
+
+function DoneByDateGroups({ doneChores, selected, onToggle, onToggleGroup, formatTime, onDelete }: DoneByDateProps) {
+  // 按完成日期(YYYY-MM-DD, 本地时区)分组
+  const groups = new Map<string, Chore[]>();
+  for (const c of doneChores) {
+    if (!c.completedAt) continue;
+    const d = new Date(c.completedAt);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(c);
+  }
+
+  const sortedDates = Array.from(groups.keys()).sort((a, b) => b.localeCompare(a));
+  const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+  return (
+    <div className="done-date-view">
+      {sortedDates.map(date => {
+        const items = groups.get(date)!;
+        const ids = items.map(i => i.id);
+        const allSelected = ids.every(id => selected.has(id));
+        const d = new Date(date + 'T00:00:00');
+        const total = items.reduce((s, i) => s + (i.actualMinutes ?? i.durationMinutes), 0);
+        return (
+          <div key={date} className="date-group">
+            <div className="date-group-header">
+              <label className="batch-select-all">
+                <input type="checkbox" checked={allSelected} onChange={() => onToggleGroup(ids)} title="按日期全选" />
+                {date} ({days[d.getDay()]})
+              </label>
+              <span className="date-group-summary">{items.length} 项 · 共 {total} 分钟</span>
+            </div>
+            {items
+              .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime())
+              .map(chore => (
+                <div key={chore.id} className="batch-item">
+                  <input type="checkbox" className="batch-checkbox" checked={selected.has(chore.id)} onChange={() => onToggle(chore.id)} />
+                  <ChoreCard chore={chore} category="done" formatTime={formatTime}
+                    onComplete={() => {}} onSkip={() => {}} onDelete={onDelete} onReschedule={() => {}} onEdit={() => {}} onStartChore={() => {}} onCancelChore={() => {}} onPauseChore={() => {}} onResumeChore={() => {}} allChores={doneChores} />
+                </div>
+              ))}
+          </div>
+        );
+      })}
     </div>
   );
 }

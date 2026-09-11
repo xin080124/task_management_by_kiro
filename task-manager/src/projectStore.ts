@@ -6,7 +6,15 @@ export function loadStories(): Story[] {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
     if (!data) return [];
-    return JSON.parse(data);
+    const stories: Story[] = JSON.parse(data);
+    // 迁移旧数据，补齐打卡字段
+    return stories.map(s => ({
+      ...s,
+      frequencyDays: s.frequencyDays ?? 1,
+      scheduledAt: s.scheduledAt ?? null,
+      checkins: s.checkins ?? [],
+      lastCheckinAt: s.lastCheckinAt ?? null,
+    }));
   } catch {
     return [];
   }
@@ -26,15 +34,19 @@ export function generateMilestoneId(): string {
 
 // CSV export - flatten milestones into rows
 export function exportProjectsToCsv(stories: Story[]): string {
-  const headers = ['storyId', 'storyTitle', 'storyDescription', 'storyStatus', 'milestoneId', 'milestoneTitle', 'milestoneStatus', 'milestoneDueDate', 'milestoneCompletedAt', 'milestoneCreatedAt', 'storyCreatedAt', 'storyCompletedAt'];
+  const headers = ['storyId', 'storyTitle', 'storyDescription', 'storyStatus', 'milestoneId', 'milestoneTitle', 'milestoneStatus', 'milestoneDueDate', 'milestoneCompletedAt', 'milestoneCreatedAt', 'storyCreatedAt', 'storyCompletedAt', 'frequencyDays', 'scheduledAt', 'checkins', 'lastCheckinAt'];
   const rows: string[] = [];
 
   for (const story of stories) {
+    const freq = String(story.frequencyDays ?? 1);
+    const sched = story.scheduledAt ?? '';
+    const checkins = (story.checkins ?? []).join(';');
+    const lastCheckin = story.lastCheckinAt ?? '';
     if (story.milestones.length === 0) {
-      rows.push(formatRow([story.id, story.title, story.description, story.status, '', '', '', '', '', '', story.createdAt, story.completedAt ?? '']));
+      rows.push(formatRow([story.id, story.title, story.description, story.status, '', '', '', '', '', '', story.createdAt, story.completedAt ?? '', freq, sched, checkins, lastCheckin]));
     } else {
       for (const ms of story.milestones) {
-        rows.push(formatRow([story.id, story.title, story.description, story.status, ms.id, ms.title, ms.status, ms.dueDate ?? '', ms.completedAt ?? '', ms.createdAt, story.createdAt, story.completedAt ?? '']));
+        rows.push(formatRow([story.id, story.title, story.description, story.status, ms.id, ms.title, ms.status, ms.dueDate ?? '', ms.completedAt ?? '', ms.createdAt, story.createdAt, story.completedAt ?? '', freq, sched, checkins, lastCheckin]));
       }
     }
   }
@@ -77,6 +89,10 @@ export function importProjectsFromCsv(csvContent: string): Story[] {
         milestones: [],
         createdAt: obj.storyCreatedAt || new Date().toISOString(),
         completedAt: obj.storyCompletedAt || null,
+        frequencyDays: parseInt(obj.frequencyDays) || 1,
+        scheduledAt: obj.scheduledAt || null,
+        checkins: obj.checkins ? obj.checkins.split(';').filter(Boolean) : [],
+        lastCheckinAt: obj.lastCheckinAt || null,
       });
     }
 

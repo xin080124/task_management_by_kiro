@@ -111,6 +111,11 @@ export interface Story {
   milestones: Milestone[];
   createdAt: string;
   completedAt: string | null;
+  // 打卡相关（可选，向后兼容旧数据）
+  frequencyDays?: number; // 打卡频率：每 N 天打卡一次，默认 1
+  scheduledAt?: string | null; // 下次应打卡时间 ISO datetime
+  checkins?: string[]; // 历史打卡时间列表 ISO datetime
+  lastCheckinAt?: string | null; // 最近一次打卡时间
 }
 
 // ===== Listening Practice types =====
