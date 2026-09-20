@@ -9,6 +9,7 @@ import CsvManager from '../components/CsvManager';
 export default function ReviewPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [filter, setFilter] = useState<TaskType | 'all'>('all');
+  const [starredOnly, setStarredOnly] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -82,6 +83,12 @@ export default function ReviewPage() {
     ));
   }, []);
 
+  const handleToggleStar = useCallback((id: string) => {
+    setTasks(prev => prev.map(t =>
+      t.id === id ? { ...t, starred: !t.starred } : t
+    ));
+  }, []);
+
   const handleImport = (imported: Task[]) => {
     setTasks(prev => {
       const existing = new Map(prev.map(t => [t.id, t]));
@@ -92,6 +99,7 @@ export default function ReviewPage() {
 
   const openCount = tasks.filter(t => t.status === 'open' || new Date(t.nextReviewDate) <= new Date()).length;
   const totalCount = tasks.length;
+  const starredCount = tasks.filter(t => t.starred).length;
 
   return (
     <>
@@ -100,6 +108,7 @@ export default function ReviewPage() {
         <div className="stats">
           <span className="stat">待复习: <strong>{openCount}</strong></span>
           <span className="stat">总计: <strong>{totalCount}</strong></span>
+          <span className="stat">⭐ 星标: <strong>{starredCount}</strong></span>
         </div>
       </header>
 
@@ -108,6 +117,7 @@ export default function ReviewPage() {
           <button className={`tab ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>全部</button>
           <button className={`tab ${filter === 'gold' ? 'active' : ''}`} onClick={() => setFilter('gold')}>Gold</button>
           <button className={`tab ${filter === 'aws' ? 'active' : ''}`} onClick={() => setFilter('aws')}>AWS</button>
+          <button className={`tab ${starredOnly ? 'active' : ''}`} onClick={() => setStarredOnly(v => !v)}>⭐ 星标</button>
         </div>
         <div className="toolbar-actions">
           <button className="btn btn-primary" onClick={() => setShowAddForm(true)}>+ 添加题目</button>
@@ -116,7 +126,7 @@ export default function ReviewPage() {
       </nav>
 
       {showAddForm && <AddTaskForm onAdd={handleAdd} onCancel={() => setShowAddForm(false)} />}
-      <TaskList tasks={tasks} filter={filter} onPass={handlePass} onFail={handleFail} onDelete={handleDelete} onEdit={handleEdit} />
+      <TaskList tasks={tasks} filter={filter} starredOnly={starredOnly} onPass={handlePass} onFail={handleFail} onDelete={handleDelete} onEdit={handleEdit} onToggleStar={handleToggleStar} />
     </>
   );
 }

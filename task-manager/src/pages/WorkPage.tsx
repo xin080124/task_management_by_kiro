@@ -1,7 +1,55 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { WorkEntry, WorkCategory } from '../types';
+import type { WorkEntry, WorkCategory, WorkSegment, Subtask } from '../types';
 import { loadWorkEntries, saveWorkEntries, generateWorkId, exportWorkToCsv, importWorkFromCsv } from '../workStore';
+import { activateTimer, deactivateTimer } from '../timerCoordinator';
 import WorkTimeline from '../components/WorkTimeline';
+import WorkTimesheet from '../components/WorkTimesheet';
+
+const TIMER_ID = 'work';
+
+function genSubtaskId(): string {
+  return 'sub-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+// 计算一组时间段的总秒数（进行中的段算到现在）
+function totalSecondsFromSegments(segments: WorkSegment[], nowMs: number = Date.now()): number {
+  return segments.reduce((sum, seg) => {
+    const start = new Date(seg.start).getTime();
+    const end = seg.end ? new Date(seg.end).getTime() : nowMs;
+    return sum + Math.max(0, Math.floor((end - start) / 1000));
+  }, 0);
+}
+
+// 一个子步骤的总秒数
+function subtaskSeconds(sub: Subtask, nowMs: number = Date.now()): number {
+  return totalSecondsFromSegments(sub.segments, nowMs);
+}
+
+// 整个任务的总秒数（所有子步骤之和）
+function entryTotalSeconds(entry: WorkEntry, nowMs: number = Date.now()): number {
+  return (entry.subtasks ?? []).reduce((s, sub) => s + subtaskSeconds(sub, nowMs), 0);
+}
+
+// 关闭某个任务当前进行中的时间段（活跃子步骤里 end=null 的那段），返回更新后的 entry
+function closeOpenSegment(entry: WorkEntry, endIso: string): WorkEntry {
+  if (!entry.startedAt) return entry;
+  const subtasks = (entry.subtasks ?? []).map(sub => ({
+    ...sub,
+    segments: sub.segments.map(seg => (seg.end === null ? { ...seg, end: endIso } : seg)),
+  }));
+  const pausedElapsed = entryTotalSeconds({ ...entry, subtasks }, new Date(endIso).getTime());
+  return { ...entry, startedAt: null, subtasks, pausedElapsed };
+}
+
+// 给指定子步骤开一段新的计时段（用于开始/继续），返回更新后的 entry
+function openSegmentForSubtask(entry: WorkEntry, subtaskId: string, startIso: string): WorkEntry {
+  const subtasks = (entry.subtasks ?? []).map(sub =>
+    sub.id === subtaskId
+      ? { ...sub, segments: [...sub.segments, { start: startIso, end: null }] }
+      : sub
+  );
+  return { ...entry, startedAt: startIso, activeSubtaskId: subtaskId, subtasks };
+}
 
 const CATEGORY_LABELS: Record<WorkCategory, string> = {
   coding: '💻 编码',
@@ -87,6 +135,9 @@ export default function WorkPage() {
             actualMinutes: null,
             startedAt: null,
             pausedElapsed: 0,
+            segments: [],
+            subtasks: [{ id: genSubtaskId(), label: 'Initial', segments: [] }],
+            activeSubtaskId: null,
             frequencyDays: e.frequencyDays,
             skippedDates: e.skippedDates,
             status: 'planned',
@@ -132,6 +183,9 @@ export default function WorkPage() {
       actualMinutes: null,
       startedAt: null,
       pausedElapsed: 0,
+      segments: [],
+      subtasks: [{ id: genSubtaskId(), label: 'Initial', segments: [] }],
+      activeSubtaskId: null,
       frequencyDays: newFrequency,
       skippedDates: [],
       status: 'planned',
@@ -147,43 +201,106 @@ export default function WorkPage() {
     setShowAddForm(false);
   };
 
-  const handleStart = useCallback((id: string) => {
+  // 滚动定位到某个任务卡片，并短暂高亮
+  const scrollToTask = useCallback((id: string) => {
+    const el = document.querySelector(`[data-work-id="${id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('task-flash');
+    setTimeout(() => el.classList.remove('task-flash'), 1500);
+  }, []);
+
+  // 暂停当前正在跑的工作任务（供全局协调中心在别的计时器启动时回调）
+  const pauseRunningWork = useCallback(() => {
+    const nowIso = new Date().toISOString();
+    setEntries(prev => prev.map(e => (e.startedAt ? closeOpenSegment(e, nowIso) : e)));
+  }, []);
+
+  // 开始/继续一个任务：单一活跃计时器——先关掉其它所有正在跑的任务，再给目标任务的活跃子步骤开一段新的
+  const startTimer = useCallback((id: string) => {
+    // 全局互斥：先停掉别的类型的计时器（家务 / PT 等）
+    activateTimer(TIMER_ID, pauseRunningWork);
+    const nowIso = new Date().toISOString();
+    setEntries(prev => prev.map(e => {
+      if (e.id === id) {
+        // 目标子步骤：继续时用当前活跃子步骤；首次开始时用第一个（Initial）
+        const targetSubId = e.activeSubtaskId ?? e.subtasks[0]?.id;
+        if (!targetSubId) return e;
+        const opened = openSegmentForSubtask(e, targetSubId, nowIso);
+        return { ...opened, status: 'in-progress' as const };
+      }
+      // 其它正在跑的任务：自动暂停（关闭其进行中的段）
+      if (e.startedAt) {
+        const closed = closeOpenSegment(e, nowIso);
+        return { ...closed, status: 'in-progress' as const }; // 状态仍是 in-progress（已暂停，可继续）
+      }
+      return e;
+    }));
+  }, [pauseRunningWork]);
+
+  // 添加子步骤：结束当前子步骤的计时，创建并开始新子步骤计时
+  const handleAddSubtask = useCallback((id: string, label: string) => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    // 确保全局互斥仍指向工作页
+    activateTimer(TIMER_ID, pauseRunningWork);
+    const nowIso = new Date().toISOString();
+    setEntries(prev => prev.map(e => {
+      if (e.id !== id) {
+        // 其它正在跑的任务自动暂停
+        if (e.startedAt) return { ...closeOpenSegment(e, nowIso), status: 'in-progress' as const };
+        return e;
+      }
+      // 目标任务：先关掉当前进行中的段（结束上一个子步骤），再加新子步骤并开始计时
+      const closed = closeOpenSegment(e, nowIso);
+      const newSub: Subtask = { id: genSubtaskId(), label: trimmed, segments: [{ start: nowIso, end: null }] };
+      return {
+        ...closed,
+        status: 'in-progress' as const,
+        startedAt: nowIso,
+        activeSubtaskId: newSub.id,
+        subtasks: [...closed.subtasks, newSub],
+      };
+    }));
+  }, [pauseRunningWork]);
+
+  // 重命名子步骤
+  const handleRenameSubtask = useCallback((entryId: string, subId: string, label: string) => {
     setEntries(prev => prev.map(e =>
-      e.id === id ? { ...e, status: 'in-progress' as const, startedAt: new Date().toISOString() } : e
+      e.id === entryId
+        ? { ...e, subtasks: e.subtasks.map(s => s.id === subId ? { ...s, label: label.trim() || s.label } : s) }
+        : e
     ));
   }, []);
 
+  const handleStart = startTimer;
+  const handleResume = startTimer;
+
   const handlePause = useCallback((id: string) => {
+    deactivateTimer(TIMER_ID);
+    const nowIso = new Date().toISOString();
     setEntries(prev => prev.map(e => {
       if (e.id !== id || !e.startedAt) return e;
-      const elapsed = Math.floor((Date.now() - new Date(e.startedAt).getTime()) / 1000) + (e.pausedElapsed ?? 0);
-      return { ...e, startedAt: null, pausedElapsed: elapsed };
+      return closeOpenSegment(e, nowIso);
     }));
   }, []);
 
-  const handleResume = useCallback((id: string) => {
-    setEntries(prev => prev.map(e =>
-      e.id === id ? { ...e, status: 'in-progress' as const, startedAt: new Date().toISOString() } : e
-    ));
-  }, []);
-
   const handleComplete = useCallback((id: string) => {
+    deactivateTimer(TIMER_ID);
     setEntries(prev => {
+      const nowIso = new Date().toISOString();
       const updated = prev.map(e => {
         if (e.id !== id) return e;
-        // Auto-calculate actual minutes: pausedElapsed + current running time
-        const paused = e.pausedElapsed ?? 0;
-        let totalSeconds = paused;
-        if (e.startedAt) {
-          totalSeconds += Math.floor((Date.now() - new Date(e.startedAt).getTime()) / 1000);
-        }
-        const actual = Math.max(1, Math.round(totalSeconds / 60));
+        // 关闭进行中的段，再按所有子步骤总和算实际工时
+        const closed = closeOpenSegment(e, nowIso);
+        const totalSeconds = entryTotalSeconds(closed);
+        const actual = totalSeconds > 0 ? Math.max(1, Math.round(totalSeconds / 60)) : 0;
         return {
-          ...e,
+          ...closed,
           status: 'done' as const,
-          completedAt: new Date().toISOString(),
+          completedAt: nowIso,
           startedAt: null,
-          pausedElapsed: 0,
+          activeSubtaskId: null,
           actualMinutes: actual,
         };
       });
@@ -201,6 +318,9 @@ export default function WorkPage() {
           actualMinutes: null,
           startedAt: null,
           pausedElapsed: 0,
+          segments: [],
+          subtasks: [{ id: genSubtaskId(), label: 'Initial', segments: [] }],
+          activeSubtaskId: null,
           frequencyDays: completed.frequencyDays,
           skippedDates: completed.skippedDates ?? [],
           status: 'planned',
@@ -238,6 +358,9 @@ export default function WorkPage() {
           actualMinutes: null,
           startedAt: null,
           pausedElapsed: 0,
+          segments: [],
+          subtasks: [{ id: genSubtaskId(), label: 'Initial', segments: [] }],
+          activeSubtaskId: null,
           frequencyDays: skipped.frequencyDays,
           skippedDates: skipped.skippedDates ?? [],
           status: 'planned',
@@ -352,6 +475,44 @@ export default function WorkPage() {
 
       <WorkTimeline entries={entries} />
 
+      <div className="chore-stats-grid">
+        <WorkTimesheet entries={entries} />
+      </div>
+
+      {(() => {
+        const active = entries.find(e => e.startedAt);
+        if (!active) return null;
+        return (
+          <div className="active-timer-banner">
+            <span>⏱ 正在计时：</span>
+            <strong>{active.project ? `[${active.project}] ` : ''}{active.task}</strong>
+            <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 0.8 }}>开始另一个任务会自动暂停它</span>
+          </div>
+        );
+      })()}
+
+      {(() => {
+        // 进行中 + 已暂停的任务，提供快速定位链接
+        const running = entries.filter(e => e.startedAt);
+        const paused = entries.filter(e => !e.startedAt && (e.pausedElapsed ?? 0) > 0 && e.status === 'in-progress');
+        if (running.length === 0 && paused.length === 0) return null;
+        return (
+          <div className="jump-panel">
+            <span className="jump-panel-label">⚡ 快速定位：</span>
+            {running.map(e => (
+              <button key={e.id} className="jump-chip running" onClick={() => scrollToTask(e.id)} title="跳到该任务">
+                ⏱ {e.project ? `[${e.project}] ` : ''}{e.task}
+              </button>
+            ))}
+            {paused.map(e => (
+              <button key={e.id} className="jump-chip paused" onClick={() => scrollToTask(e.id)} title="跳到该任务">
+                ⏸ {e.project ? `[${e.project}] ` : ''}{e.task}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
+
       {showAddForm && (
         <form className="add-task-form" onSubmit={handleAdd}>
           <h2>添加工作任务</h2>
@@ -439,7 +600,7 @@ export default function WorkPage() {
           <div className="task-section">
             <h3 className="section-overdue">⚠️ 过期未完成 ({overdueEntries.length})</h3>
             {overdueEntries.map(entry => (
-              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
+              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} onAddSubtask={handleAddSubtask} onRenameSubtask={handleRenameSubtask} />
             ))}
           </div>
         )}
@@ -448,7 +609,7 @@ export default function WorkPage() {
           <div className="task-section">
             <h3>🔥 今天 ({todayEntries.length})</h3>
             {todayEntries.map(entry => (
-              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
+              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} onAddSubtask={handleAddSubtask} onRenameSubtask={handleRenameSubtask} />
             ))}
           </div>
         )}
@@ -457,7 +618,7 @@ export default function WorkPage() {
           <div className="task-section">
             <h3>📅 之后 ({allUpcoming.length})</h3>
             {allUpcoming.map(entry => (
-              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
+              <WorkCard key={entry.id} entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} onAddSubtask={handleAddSubtask} onRenameSubtask={handleRenameSubtask} />
             ))}
           </div>
         )}
@@ -476,7 +637,7 @@ export default function WorkPage() {
             {skippedEntries.map(entry => (
               <div key={entry.id} className="batch-item">
                 <input type="checkbox" className="batch-checkbox" checked={selectedForDelete.has(entry.id)} onChange={() => toggleSelect(entry.id)} />
-                <WorkCard entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
+                <WorkCard entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} onAddSubtask={handleAddSubtask} onRenameSubtask={handleRenameSubtask} />
               </div>
             ))}
           </div>
@@ -499,7 +660,7 @@ export default function WorkPage() {
             {doneEntries.map(entry => (
               <div key={entry.id} className="batch-item">
                 <input type="checkbox" className="batch-checkbox" checked={selectedForDelete.has(entry.id)} onChange={() => toggleSelect(entry.id)} />
-                <WorkCard entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
+                <WorkCard entry={entry} onStart={handleStart} onPause={handlePause} onResume={handleResume} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} onAddSubtask={handleAddSubtask} onRenameSubtask={handleRenameSubtask} />
               </div>
             ))}
           </div>
@@ -538,10 +699,15 @@ interface WorkCardProps {
   onSkip: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string, updates: Partial<Pick<WorkEntry, 'task' | 'project' | 'category' | 'durationMinutes' | 'frequencyDays' | 'scheduledDate'>>) => void;
+  onAddSubtask: (id: string, label: string) => void;
+  onRenameSubtask: (entryId: string, subId: string, label: string) => void;
 }
 
-function WorkCard({ entry, onStart, onPause, onResume, onComplete, onSkip, onDelete, onEdit }: WorkCardProps) {
+function WorkCard({ entry, onStart, onPause, onResume, onComplete, onSkip, onDelete, onEdit, onAddSubtask, onRenameSubtask }: WorkCardProps) {
   const [editing, setEditing] = useState(false);
+  const [newSubLabel, setNewSubLabel] = useState('');
+  const [editingSubId, setEditingSubId] = useState<string | null>(null);
+  const [editSubLabel, setEditSubLabel] = useState('');
   const [editTask, setEditTask] = useState(entry.task);
   const [editProject, setEditProject] = useState(entry.project ?? '');
   const [editDuration, setEditDuration] = useState(entry.durationMinutes);
@@ -550,18 +716,22 @@ function WorkCard({ entry, onStart, onPause, onResume, onComplete, onSkip, onDel
   const [editDate, setEditDate] = useState(entry.scheduledDate);
   const [elapsed, setElapsed] = useState(0);
 
-  const isInProgress = entry.status === 'in-progress';
+  const isRunning = !!entry.startedAt; // 当前正在跑（有进行中的段）
   const isPaused = !entry.startedAt && (entry.pausedElapsed ?? 0) > 0 && entry.status === 'in-progress';
+  const isInProgress = entry.status === 'in-progress';
 
-  // Live timer for in-progress entries
+  // Live timer：正在跑时 = 已完成段累计 + 当前段运行时间
   useEffect(() => {
-    if (!isInProgress || !entry.startedAt) return;
+    if (!isRunning || !entry.startedAt) {
+      setElapsed(entry.pausedElapsed ?? 0);
+      return;
+    }
     const base = entry.pausedElapsed ?? 0;
     const update = () => setElapsed(base + Math.floor((Date.now() - new Date(entry.startedAt!).getTime()) / 1000));
     update();
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, [isInProgress, entry.startedAt, entry.pausedElapsed]);
+  }, [isRunning, entry.startedAt, entry.pausedElapsed]);
 
   const handleSave = () => {
     onEdit(entry.id, {
@@ -599,7 +769,7 @@ function WorkCard({ entry, onStart, onPause, onResume, onComplete, onSkip, onDel
   };
 
   return (
-    <div className={`task-card work-card ${isDone ? 'done' : ''} ${isSkipped ? 'skipped' : ''} ${isInProgress ? 'in-progress' : ''}`}>
+    <div className={`task-card work-card ${isDone ? 'done' : ''} ${isSkipped ? 'skipped' : ''} ${isInProgress ? 'in-progress' : ''}`} data-work-id={entry.id}>
       <div className="task-header">
         {!editing ? (
           <span className="chore-title">
@@ -613,7 +783,8 @@ function WorkCard({ entry, onStart, onPause, onResume, onComplete, onSkip, onDel
         <div className="task-header-right">
           <span className="chore-duration">{entry.durationMinutes}分钟</span>
           {freqLabel && <span className="chore-frequency">{freqLabel}</span>}
-          {isInProgress && <span className="in-progress-badge">⏱ {formatElapsed(elapsed)}</span>}
+          {isRunning && <span className="in-progress-badge">⏱ {formatElapsed(elapsed)}</span>}
+          {!isRunning && isPaused && <span className="paused-badge">⏸ 已暂停</span>}
           {!isDone && !isSkipped && (
             <button className="btn-edit" onClick={() => setEditing(!editing)} title="编辑">✎</button>
           )}
@@ -661,21 +832,27 @@ function WorkCard({ entry, onStart, onPause, onResume, onComplete, onSkip, onDel
 
       {!isDone && !isSkipped && (
         <div className="chore-actions">
-          {!isInProgress && !isPaused && (
+          {/* 未开始过 */}
+          {!isRunning && !isPaused && (
             <button className="btn btn-secondary" onClick={() => onStart(entry.id)}>▶ 开始</button>
           )}
+          {/* 已暂停（含被切换而自动暂停的） */}
           {isPaused && (
             <>
               <span className="chore-timer paused">⏸ {formatElapsed(entry.pausedElapsed ?? 0)}</span>
               <button className="btn btn-secondary" onClick={() => onResume(entry.id)}>▶ 继续</button>
             </>
           )}
-          {isInProgress && entry.startedAt && (
+          {/* 正在跑 */}
+          {isRunning && (
             <>
               <span className="chore-timer">⏱ {formatElapsed(elapsed)}</span>
               <button className="btn btn-pause" onClick={() => onPause(entry.id)}>⏸ 暂停</button>
-              <button className="btn btn-pass" onClick={() => onComplete(entry.id)}>⏹ 完成</button>
             </>
+          )}
+          {/* 只要开始过（跑着或暂停）都能完成 */}
+          {(isRunning || isPaused) && (
+            <button className="btn btn-pass" onClick={() => onComplete(entry.id)}>⏹ 完成</button>
           )}
           <button className="btn btn-skip" onClick={() => onSkip(entry.id)}>⏭ 跳过</button>
         </div>
@@ -692,6 +869,78 @@ function WorkCard({ entry, onStart, onPause, onResume, onComplete, onSkip, onDel
         </div>
       )}
 
+      {/* 子步骤时间线：任务拆成的每一步及其耗时 */}
+      {entry.subtasks.length > 0 && (entry.subtasks.length > 1 || (entry.subtasks[0]?.segments.length ?? 0) > 0) && (
+        <div className="subtask-timeline">
+          <div className="subtask-timeline-title">
+            🧩 {entry.subtasks.length} 步 · 总计 {isRunning ? formatElapsed(elapsed) : `${Math.round((entry.pausedElapsed ?? 0) / 60)}分钟`}
+          </div>
+          {entry.subtasks.map((sub, idx) => {
+            const isActive = entry.activeSubtaskId === sub.id && isRunning;
+            const secs = isActive ? elapsedSubSeconds(sub, elapsed, entry) : subSecondsStatic(sub);
+            return (
+              <div key={sub.id} className={`subtask-row ${isActive ? 'active' : ''}`}>
+                <span className="subtask-dot" />
+                <span className="subtask-index">{idx + 1}.</span>
+                {editingSubId === sub.id ? (
+                  <input
+                    type="text"
+                    className="form-input-sm subtask-edit-input"
+                    value={editSubLabel}
+                    autoFocus
+                    onChange={e => setEditSubLabel(e.target.value)}
+                    onBlur={() => { onRenameSubtask(entry.id, sub.id, editSubLabel); setEditingSubId(null); }}
+                    onKeyDown={e => { if (e.key === 'Enter') { onRenameSubtask(entry.id, sub.id, editSubLabel); setEditingSubId(null); } }}
+                  />
+                ) : (
+                  <span
+                    className="subtask-label"
+                    title="点击重命名"
+                    onClick={() => { setEditingSubId(sub.id); setEditSubLabel(sub.label); }}
+                  >
+                    {sub.label}{isActive && ' ⏱'}
+                  </span>
+                )}
+                <span className="subtask-time">{formatElapsed(secs)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 添加子步骤：结束上一步、开始新一步 */}
+      {!isDone && !isSkipped && (isRunning || isPaused) && (
+        <form
+          className="add-subtask-form"
+          onSubmit={e => { e.preventDefault(); if (newSubLabel.trim()) { onAddSubtask(entry.id, newSubLabel); setNewSubLabel(''); } }}
+        >
+          <input
+            type="text"
+            className="form-input-sm"
+            value={newSubLabel}
+            onChange={e => setNewSubLabel(e.target.value)}
+            placeholder="下一步做什么？输入后点添加，结束上一步并开始计时…"
+          />
+          <button type="submit" className="btn btn-primary btn-sm" disabled={!newSubLabel.trim()}>+ 添加子步骤</button>
+        </form>
+      )}
+
     </div>
   );
+}
+
+// 某子步骤已完成段的静态秒数（不含正在跑的段）
+function subSecondsStatic(sub: Subtask): number {
+  return sub.segments.reduce((s, seg) => {
+    if (seg.end === null) return s;
+    return s + Math.max(0, Math.floor((new Date(seg.end).getTime() - new Date(seg.start).getTime()) / 1000));
+  }, 0);
+}
+
+// 活跃子步骤的实时秒数：其它子步骤都是静态的，用 entry 总实时秒数减去其它子步骤静态秒数
+function elapsedSubSeconds(activeSub: Subtask, entryElapsed: number, entry: WorkEntry): number {
+  const others = entry.subtasks
+    .filter(s => s.id !== activeSub.id)
+    .reduce((sum, s) => sum + subSecondsStatic(s), 0);
+  return Math.max(0, entryElapsed - others);
 }

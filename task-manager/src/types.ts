@@ -11,6 +11,7 @@ export interface Task {
   nextReviewDate: string; // ISO date string
   createdAt: string;
   lastReviewedAt: string | null;
+  starred?: boolean; // 星标：重点关注的题目
 }
 
 // Interval in days for each status level
@@ -38,6 +39,8 @@ export interface Chore {
   actualMinutes: number | null; // 实际用时，自动计算
   startedAt: string | null; // ISO datetime, 点开始时记录
   pausedElapsed: number; // 暂停时已累计的秒数
+  subtasks: Subtask[]; // 子步骤：这里主要用来记录“分心念头”，默认一个 Initial
+  activeSubtaskId: string | null; // 当前正在计时的子步骤 id
   frequencyDays: number; // repeat every n days, default 1
   priority: ChorePriority; // auto-set to 'high' if 5-10 min
   skippedDates: string[]; // ISO date strings of skipped occurrences
@@ -71,6 +74,20 @@ export type WorkCategory = 'coding' | 'meeting' | 'review' | 'planning' | 'ops' 
 
 export type WorkStatus = 'planned' | 'in-progress' | 'done' | 'skipped';
 
+// 一段工作时间：切换任务/暂停会产生一段。end 为 null 表示这段仍在进行中。
+export interface WorkSegment {
+  start: string; // ISO datetime
+  end: string | null; // ISO datetime, null = 进行中
+}
+
+// 子步骤：一个工作任务由若干带计时的子步骤组成（默认第一个是 Initial）。
+// 一个子步骤内部可以有多段（被暂停切断），耗时 = 名下所有段之和。
+export interface Subtask {
+  id: string;
+  label: string;
+  segments: WorkSegment[];
+}
+
 export interface WorkEntry {
   id: string;
   task: string; // 任务描述
@@ -79,8 +96,11 @@ export interface WorkEntry {
   scheduledDate: string; // ISO date string (YYYY-MM-DD)
   durationMinutes: number; // 预估时长
   actualMinutes: number | null; // 实际时长，自动计算
-  startedAt: string | null; // ISO datetime, 点开始时记录
-  pausedElapsed: number; // 暂停时已累计的秒数
+  startedAt: string | null; // ISO datetime, 点开始时记录（= 当前进行中那段的开始）
+  pausedElapsed: number; // 已完成时间段累计的秒数（不含当前进行中那段）
+  segments: WorkSegment[]; // 所有工作时间段（碎片），保留每段起止用于回看注意力流动（旧字段，保留兼容）
+  subtasks: Subtask[]; // 子步骤列表（默认含一个 Initial）
+  activeSubtaskId: string | null; // 当前正在计时的子步骤 id，null = 未在计
   frequencyDays: number; // 重复频率，0=不重复
   skippedDates: string[];
   status: WorkStatus;

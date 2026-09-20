@@ -7,9 +7,10 @@ interface Props {
   onFail: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string, updates: Partial<Pick<Task, 'question' | 'answer'>>) => void;
+  onToggleStar: (id: string) => void;
 }
 
-export default function TaskCard({ task, onPass, onFail, onDelete, onEdit }: Props) {
+export default function TaskCard({ task, onPass, onFail, onDelete, onEdit, onToggleStar }: Props) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editQuestion, setEditQuestion] = useState(task.question);
@@ -42,8 +43,15 @@ export default function TaskCard({ task, onPass, onFail, onDelete, onEdit }: Pro
   };
 
   return (
-    <div className={`task-card ${task.type} ${isOpen ? 'active' : 'waiting'}`}>
+    <div className={`task-card ${task.type} ${isOpen ? 'active' : 'waiting'} ${task.starred ? 'starred' : ''}`}>
       <div className="task-header">
+        <button
+          className={`btn-star ${task.starred ? 'on' : ''}`}
+          onClick={() => onToggleStar(task.id)}
+          title={task.starred ? '取消星标' : '标记为重点关注'}
+        >
+          {task.starred ? '★' : '☆'}
+        </button>
         <span className={`type-badge ${task.type}`}>{task.type.toUpperCase()}</span>
         <div className="task-header-right">
           <span className={`status-badge ${task.status}`}>

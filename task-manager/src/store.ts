@@ -6,7 +6,8 @@ export function loadTasks(): Task[] {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
     if (!data) return [];
-    return JSON.parse(data);
+    const tasks: Task[] = JSON.parse(data);
+    return tasks.map(t => ({ ...t, starred: t.starred ?? false }));
   } catch {
     return [];
   }
@@ -22,7 +23,7 @@ export function generateId(): string {
 
 // CSV export
 export function exportToCsv(tasks: Task[]): string {
-  const headers = ['id', 'type', 'question', 'answer', 'status', 'nextReviewDate', 'createdAt', 'lastReviewedAt'];
+  const headers = ['id', 'type', 'question', 'answer', 'status', 'nextReviewDate', 'createdAt', 'lastReviewedAt', 'starred'];
   const rows = tasks.map(task =>
     headers.map(h => {
       const value = task[h as keyof Task] ?? '';
@@ -63,6 +64,7 @@ export function importFromCsv(csvContent: string): Task[] {
       nextReviewDate: obj.nextReviewDate || new Date().toISOString(),
       createdAt: obj.createdAt || new Date().toISOString(),
       lastReviewedAt: obj.lastReviewedAt || null,
+      starred: obj.starred === 'true',
     });
   }
 

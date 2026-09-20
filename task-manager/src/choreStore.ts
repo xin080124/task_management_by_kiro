@@ -8,16 +8,28 @@ export function loadChores(): Chore[] {
     if (!data) return [];
     const chores: Chore[] = JSON.parse(data);
     // Migrate old data missing new fields
-    return chores.map(c => ({
-      ...c,
-      description: c.description ?? '',
-      frequencyDays: c.frequencyDays ?? 1,
-      skippedDates: c.skippedDates ?? [],
-      startedAt: c.startedAt ?? null,
-      pausedElapsed: c.pausedElapsed ?? 0,
-      actualMinutes: c.actualMinutes ?? null,
-      priority: c.priority ?? ((c.durationMinutes >= 5 && c.durationMinutes <= 10) ? 'high' : 'normal'),
-    }));
+    return chores.map(c => {
+      // 迁移：旧数据没有 subtasks，补一个默认 Initial 子步骤
+      let subtasks = c.subtasks;
+      let activeSubtaskId = c.activeSubtaskId ?? null;
+      if (!subtasks || subtasks.length === 0) {
+        const initialId = 'csub-initial-' + c.id;
+        subtasks = [{ id: initialId, label: '做家务', segments: c.startedAt ? [{ start: c.startedAt, end: null }] : [] }];
+        activeSubtaskId = c.startedAt ? initialId : null;
+      }
+      return {
+        ...c,
+        description: c.description ?? '',
+        frequencyDays: c.frequencyDays ?? 1,
+        skippedDates: c.skippedDates ?? [],
+        startedAt: c.startedAt ?? null,
+        pausedElapsed: c.pausedElapsed ?? 0,
+        subtasks,
+        activeSubtaskId,
+        actualMinutes: c.actualMinutes ?? null,
+        priority: c.priority ?? ((c.durationMinutes >= 5 && c.durationMinutes <= 10) ? 'high' : 'normal'),
+      };
+    });
   } catch {
     return [];
   }
@@ -33,10 +45,18 @@ export function generateChoreId(): string {
 
 // CSV export for chores
 export function exportChoresToCsv(chores: Chore[]): string {
-  const headers = ['id', 'title', 'description', 'scheduledAt', 'durationMinutes', 'actualMinutes', 'startedAt', 'frequencyDays', 'priority', 'skippedDates', 'status', 'createdAt', 'completedAt'];
+  const headers = ['id', 'title', 'description', 'scheduledAt', 'durationMinutes', 'actualMinutes', 'startedAt', 'pausedElapsed', 'subtasks', 'activeSubtaskId', 'frequencyDays', 'priority', 'skippedDates', 'status', 'createdAt', 'completedAt'];
   const rows = chores.map(chore =>
     headers.map(h => {
-      let value: string | number | string[] | null = chore[h as keyof Chore] ?? '';
+      // subtasks 用 JSON 序列化存进单个字段
+      if (h === 'subtasks') {
+        const str = JSON.stringify(chore.subtasks ?? []);
+        if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      }
+      let value: string | number | string[] | null = (chore[h as keyof Chore] as string | number | string[] | null) ?? '';
       // Join array fields with semicolons
       if (Array.isArray(value)) {
         value = value.join(';');
@@ -69,6 +89,20 @@ export function importChoresFromCsv(csvContent: string): Chore[] {
     });
 
     const duration = parseInt(obj.durationMinutes) || 30;
+
+    let subtasks: Chore['subtasks'] = [];
+    if (obj.subtasks) {
+      try {
+        const parsed = JSON.parse(obj.subtasks);
+        if (Array.isArray(parsed)) subtasks = parsed;
+      } catch {
+        subtasks = [];
+      }
+    }
+    if (subtasks.length === 0) {
+      subtasks = [{ id: 'csub-initial-' + (obj.id || generateChoreId()), label: '做家务', segments: [] }];
+    }
+
     chores.push({
       id: obj.id || generateChoreId(),
       title: obj.title || '',
@@ -78,6 +112,8 @@ export function importChoresFromCsv(csvContent: string): Chore[] {
       actualMinutes: obj.actualMinutes ? parseInt(obj.actualMinutes) : null,
       startedAt: obj.startedAt || null,
       pausedElapsed: parseInt(obj.pausedElapsed) || 0,
+      subtasks,
+      activeSubtaskId: obj.activeSubtaskId || null,
       frequencyDays: parseInt(obj.frequencyDays) || 1,
       priority: (obj.priority as Chore['priority']) || (duration >= 5 && duration <= 10 ? 'high' : 'normal'),
       skippedDates: obj.skippedDates ? obj.skippedDates.split(';').filter(Boolean) : [],

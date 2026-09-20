@@ -1830,3 +1830,571 @@ body {
   color: #e03131;
   font-weight: 600;
 }
+
+/* ===== 工作时间段碎片 ===== */
+.paused-badge {
+  font-size: 12px;
+  color: #f08c00;
+  background: #fff4e6;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.work-segments {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.work-segments-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 6px;
+}
+
+.work-segments-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.work-segment-chip {
+  font-size: 12px;
+  background: #e7f5ff;
+  color: #1971c2;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.work-segment-chip.running {
+  background: #ebfbee;
+  color: #2f9e44;
+  font-weight: 600;
+}
+
+/* 当前活跃任务提示条 */
+.active-timer-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  margin: 8px 0;
+  background: #ebfbee;
+  border: 1px solid #b2f2bb;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #2b8a3e;
+}
+
+/* ===== 快速定位面板 ===== */
+.jump-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 8px 0;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.jump-panel-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+}
+
+.jump-chip {
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.jump-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.jump-chip.running {
+  background: #ebfbee;
+  color: #2b8a3e;
+  font-weight: 600;
+}
+
+.jump-chip.paused {
+  background: #fff4e6;
+  color: #e8590c;
+}
+
+/* 定位后短暂高亮闪烁 */
+.task-flash {
+  animation: task-flash-anim 1.5s ease-out;
+}
+
+@keyframes task-flash-anim {
+  0% { box-shadow: 0 0 0 3px rgba(34, 139, 230, 0.8); background-color: rgba(34, 139, 230, 0.08); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 139, 230, 0); background-color: transparent; }
+}
+
+/* ===== 碎事时间（gap）指示 ===== */
+.gap-stat.running strong {
+  color: #f08c00;
+}
+
+.gap-stat.running {
+  animation: gap-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes gap-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ===== 碎事时段横幅 ===== */
+.gap-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin: 8px 0;
+  background: #fff4e6;
+  border: 1px dashed #ffa94d;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #e8590c;
+}
+
+.gap-banner-icon {
+  font-size: 18px;
+}
+
+.gap-banner-timer {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: #fff;
+  padding: 2px 10px;
+  border-radius: 12px;
+  color: #d9480f;
+}
+
+.gap-banner-hint {
+  margin-left: auto;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+/* ===== 碎事横幅备注框 ===== */
+.gap-banner {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.gap-banner-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.gap-banner-note-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.gap-banner-note {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #ffd8a8;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.gap-banner-note:focus {
+  outline: none;
+  border-color: #ffa94d;
+}
+
+/* ===== 碎事时间线 ===== */
+.gap-timeline-section {
+  margin: 8px 0;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.gap-timeline-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  background: #faf9f7;
+}
+
+.gap-timeline-title {
+  font-weight: 600;
+  color: #444;
+}
+
+.gap-timeline-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: #999;
+}
+
+.gap-timeline-body {
+  padding: 12px 14px;
+}
+
+.gap-timeline-filter {
+  margin-bottom: 12px;
+}
+
+.gap-timeline-empty {
+  color: #aaa;
+  font-size: 13px;
+  padding: 8px 0;
+}
+
+.gap-timeline-day {
+  margin-bottom: 14px;
+}
+
+.gap-timeline-date {
+  font-size: 13px;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.gap-item {
+  padding: 4px 0;
+}
+
+.gap-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #888;
+}
+
+.gap-item-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.gap-item-duration {
+  background: #fff4e6;
+  color: #e8590c;
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+
+.gap-item-note {
+  margin-top: 3px;
+  font-size: 14px;
+  color: #333;
+  cursor: pointer;
+}
+
+.gap-item-note-empty {
+  color: #bbb;
+  font-size: 13px;
+}
+
+.gap-item-edit {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.gap-item-edit .form-input-sm {
+  flex: 1;
+}
+
+/* ===== 复习题星标 ===== */
+.btn-star {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  color: #ccc;
+  padding: 0 4px;
+  transition: transform 0.1s, color 0.1s;
+}
+
+.btn-star:hover {
+  transform: scale(1.2);
+}
+
+.btn-star.on {
+  color: #f5a623;
+}
+
+.task-card.starred {
+  border-left: 3px solid #f5a623;
+  background: linear-gradient(90deg, #fffdf5 0%, #fff 40%);
+}
+
+/* ===== 工作子步骤时间线 ===== */
+.subtask-timeline {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.subtask-timeline-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 8px;
+}
+
+.subtask-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 14px;
+}
+
+.subtask-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ced4da;
+  flex-shrink: 0;
+}
+
+.subtask-row.active .subtask-dot {
+  background: #2f9e44;
+  box-shadow: 0 0 0 3px rgba(47, 158, 68, 0.2);
+}
+
+.subtask-index {
+  color: #adb5bd;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.subtask-label {
+  flex: 1;
+  cursor: pointer;
+  color: #333;
+}
+
+.subtask-row.active .subtask-label {
+  font-weight: 600;
+  color: #2b8a3e;
+}
+
+.subtask-label:hover {
+  text-decoration: underline dotted;
+}
+
+.subtask-edit-input {
+  flex: 1;
+}
+
+.subtask-time {
+  font-variant-numeric: tabular-nums;
+  color: #666;
+  font-size: 13px;
+}
+
+.add-subtask-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.add-subtask-form .form-input-sm {
+  flex: 1;
+}
+
+/* ===== 工作工时表 ===== */
+.timesheet-card {
+  width: 100%;
+}
+
+.timesheet-entry {
+  padding: 2px 0;
+}
+
+.timesheet-entry-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.timesheet-arrow {
+  color: #adb5bd;
+  font-size: 11px;
+  width: 12px;
+}
+
+.timesheet-project {
+  color: #1971c2;
+  font-size: 12px;
+}
+
+.timesheet-task {
+  flex: 1;
+  color: #333;
+}
+
+.timesheet-time {
+  font-variant-numeric: tabular-nums;
+  color: #e8590c;
+  font-weight: 600;
+}
+
+.timesheet-subs {
+  padding: 2px 0 6px 24px;
+}
+
+.timesheet-sub-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 13px;
+  color: #666;
+}
+
+.timesheet-sub-index {
+  color: #adb5bd;
+  font-size: 11px;
+}
+
+.timesheet-sub-label {
+  flex: 1;
+}
+
+.timesheet-sub-time {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== 分心提醒（家务/工作子步骤记录时） ===== */
+.distraction-reminder {
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: #fff9db;
+  border: 1px solid #ffe066;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #a67c00;
+}
+
+/* ===== 散漫申请器 ===== */
+.distraction-gate {
+  width: 100%;
+}
+
+.btn-distraction-trigger {
+  width: 100%;
+  padding: 10px;
+  background: #f1f3f5;
+  color: #495057;
+  border: 1px dashed #adb5bd;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-distraction-trigger:hover {
+  background: #e9ecef;
+}
+
+.distraction-panel {
+  border: 1px solid #dee2e6;
+  border-radius: 10px;
+  padding: 14px;
+  background: #fff;
+}
+
+.distraction-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.distraction-hint {
+  font-size: 13px;
+  color: #868e96;
+  margin: 0 0 10px;
+}
+
+.distraction-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.distraction-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #495057;
+  cursor: pointer;
+  line-height: 1.5;
+}
+
+.distraction-item input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.distraction-item.checked {
+  background: #ebfbee;
+  color: #2b8a3e;
+}
+
+.distraction-approve {
+  width: 100%;
+}
+
+.distraction-approve:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.distraction-granted {
+  text-align: center;
+  padding: 8px 0;
+}
+
+.distraction-granted-note {
+  font-size: 13px;
+  color: #868e96;
+  margin: 6px 0 12px;
+}

@@ -2,6 +2,50 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Chore } from '../types';
 import { loadChores, saveChores, generateChoreId, exportChoresToCsv, importChoresFromCsv } from '../choreStore';
 import ChoreTimeline from '../components/ChoreTimeline';
+import ChoreTimesheet from '../components/ChoreTimesheet';
+import { activateTimer, deactivateTimer } from '../timerCoordinator';
+import type { Subtask, WorkSegment } from '../types';
+
+const TIMER_ID = 'chore';
+
+function genSubtaskId(): string {
+  return 'csub-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function segSecondsC(segments: WorkSegment[], nowMs: number): number {
+  return segments.reduce((sum, seg) => {
+    const start = new Date(seg.start).getTime();
+    const end = seg.end ? new Date(seg.end).getTime() : nowMs;
+    return sum + Math.max(0, Math.floor((end - start) / 1000));
+  }, 0);
+}
+
+function choreTotalSeconds(chore: Chore, nowMs: number = Date.now()): number {
+  return (chore.subtasks ?? []).reduce((s, sub) => s + segSecondsC(sub.segments, nowMs), 0);
+}
+
+// 关闭家务当前进行中的时间段（活跃子步骤里 end=null 的那段）
+function closeOpenSegmentC(chore: Chore, endIso: string): Chore {
+  if (!chore.startedAt) return chore;
+  const subtasks = (chore.subtasks ?? []).map(sub => ({
+    ...sub,
+    segments: sub.segments.map(seg => (seg.end === null ? { ...seg, end: endIso } : seg)),
+  }));
+  const pausedElapsed = choreTotalSeconds({ ...chore, subtasks }, new Date(endIso).getTime());
+  return { ...chore, startedAt: null, subtasks, pausedElapsed };
+}
+
+// 给指定子步骤开一段新的计时段
+function openSegmentForSubtaskC(chore: Chore, subtaskId: string, startIso: string): Chore {
+  const subtasks = (chore.subtasks ?? []).map(sub =>
+    sub.id === subtaskId ? { ...sub, segments: [...sub.segments, { start: startIso, end: null }] } : sub
+  );
+  return { ...chore, startedAt: startIso, activeSubtaskId: subtaskId, subtasks };
+}
+
+function defaultChoreSubtasks(): Subtask[] {
+  return [{ id: genSubtaskId(), label: '做家务', segments: [] }];
+}
 
 export default function ChorePage() {
   const [chores, setChores] = useState<Chore[]>([]);
@@ -30,6 +74,21 @@ export default function ChorePage() {
       saveChores(chores);
     }
   }, [chores, initialized]);
+
+  // 滚动定位到某个任务卡片，并短暂高亮
+  const scrollToTask = useCallback((id: string) => {
+    const el = document.querySelector(`[data-chore-id="${id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('task-flash');
+    setTimeout(() => el.classList.remove('task-flash'), 1500);
+  }, []);
+
+  // 暂停当前正在跑的家务（供全局协调中心在别的计时器启动时回调）
+  const pauseRunningChores = useCallback(() => {
+    const nowIso = new Date().toISOString();
+    setChores(prev => prev.map(c => (c.startedAt ? closeOpenSegmentC(c, nowIso) : c)));
+  }, []);
 
   // Categorize chores
   const now = new Date();
@@ -85,6 +144,8 @@ export default function ChorePage() {
           actualMinutes: null,
           startedAt: null,
           pausedElapsed: 0,
+          subtasks: defaultChoreSubtasks(),
+          activeSubtaskId: null,
           frequencyDays: freq,
           priority: c.priority ?? 'normal',
           skippedDates: c.skippedDates ?? [],
@@ -118,6 +179,8 @@ export default function ChorePage() {
       actualMinutes: null,
       startedAt: null,
       pausedElapsed: 0,
+      subtasks: defaultChoreSubtasks(),
+      activeSubtaskId: null,
       frequencyDays: newFrequency,
       priority: (newDuration >= 5 && newDuration <= 10) ? 'high' : 'normal',
       skippedDates: [],
@@ -135,19 +198,16 @@ export default function ChorePage() {
   };
 
   const handleComplete = useCallback((id: string) => {
+    deactivateTimer(TIMER_ID);
     setChores(prev => {
+      const nowIso = new Date().toISOString();
       const updated = prev.map(c => {
         if (c.id !== id) return c;
-        // Auto-calculate actual minutes: pausedElapsed + current running time
-        let actual: number | null = null;
-        const paused = c.pausedElapsed ?? 0;
-        if (c.startedAt) {
-          const running = Math.floor((Date.now() - new Date(c.startedAt).getTime()) / 1000);
-          actual = Math.max(1, Math.round((paused + running) / 60));
-        } else if (paused > 0) {
-          actual = Math.max(1, Math.round(paused / 60));
-        }
-        return { ...c, status: 'done' as const, completedAt: new Date().toISOString(), actualMinutes: actual, pausedElapsed: 0 };
+        // 关闭进行中的段，再按所有子步骤总和算实际用时
+        const closed = closeOpenSegmentC(c, nowIso);
+        const totalSeconds = choreTotalSeconds(closed);
+        const actual = totalSeconds > 0 ? Math.max(1, Math.round(totalSeconds / 60)) : null;
+        return { ...closed, status: 'done' as const, completedAt: nowIso, actualMinutes: actual, activeSubtaskId: null };
       });
 
       // Auto-create next occurrence based on frequency
@@ -176,6 +236,8 @@ export default function ChorePage() {
             actualMinutes: null,
             startedAt: null,
             pausedElapsed: 0,
+            subtasks: defaultChoreSubtasks(),
+            activeSubtaskId: null,
             frequencyDays: freq,
             priority: completed.priority ?? 'normal',
             skippedDates: completed.skippedDates ?? [],
@@ -227,6 +289,8 @@ export default function ChorePage() {
             actualMinutes: null,
             startedAt: null,
             pausedElapsed: 0,
+            subtasks: defaultChoreSubtasks(),
+            activeSubtaskId: null,
             frequencyDays: freq,
             priority: skipped.priority ?? 'normal',
             skippedDates: skipped.skippedDates ?? [],
@@ -293,30 +357,66 @@ export default function ChorePage() {
     ));
   }, []);
 
-  const handleStartChore = useCallback((id: string) => {
+  // 开始/继续：单一活跃计时器——先暂停其它所有正在跑的家务，再给目标家务的活跃子步骤开一段
+  const startChoreTimer = useCallback((id: string) => {
+    // 全局互斥：先停掉别的类型的计时器（工作等）
+    activateTimer(TIMER_ID, pauseRunningChores);
+    const nowIso = new Date().toISOString();
+    setChores(prev => prev.map(c => {
+      if (c.id === id) {
+        const targetSubId = c.activeSubtaskId ?? c.subtasks[0]?.id;
+        if (!targetSubId) return c;
+        return openSegmentForSubtaskC(c, targetSubId, nowIso);
+      }
+      // 其它正在跑的家务：自动暂停（关闭其进行中的段）
+      if (c.startedAt) {
+        return closeOpenSegmentC(c, nowIso);
+      }
+      return c;
+    }));
+  }, [pauseRunningChores]);
+
+  const handleStartChore = startChoreTimer;
+  const handleResumeChore = startChoreTimer;
+
+  // 添加子步骤（记录分心念头）：结束当前段、新建子步骤并开始计时
+  const handleAddChoreSubtask = useCallback((id: string, label: string) => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    activateTimer(TIMER_ID, pauseRunningChores);
+    const nowIso = new Date().toISOString();
+    setChores(prev => prev.map(c => {
+      if (c.id !== id) {
+        if (c.startedAt) return closeOpenSegmentC(c, nowIso);
+        return c;
+      }
+      const closed = closeOpenSegmentC(c, nowIso);
+      const newSub: Subtask = { id: genSubtaskId(), label: trimmed, segments: [{ start: nowIso, end: null }] };
+      return { ...closed, startedAt: nowIso, activeSubtaskId: newSub.id, subtasks: [...closed.subtasks, newSub] };
+    }));
+  }, [pauseRunningChores]);
+
+  const handleRenameChoreSubtask = useCallback((choreId: string, subId: string, label: string) => {
     setChores(prev => prev.map(c =>
-      c.id === id ? { ...c, startedAt: new Date().toISOString() } : c
+      c.id === choreId
+        ? { ...c, subtasks: c.subtasks.map(s => s.id === subId ? { ...s, label: label.trim() || s.label } : s) }
+        : c
     ));
   }, []);
 
   const handleCancelChore = useCallback((id: string) => {
+    deactivateTimer(TIMER_ID);
     setChores(prev => prev.map(c =>
-      c.id === id ? { ...c, startedAt: null, pausedElapsed: 0 } : c
+      c.id === id ? { ...c, startedAt: null, pausedElapsed: 0, subtasks: defaultChoreSubtasks(), activeSubtaskId: null } : c
     ));
   }, []);
 
   const handlePauseChore = useCallback((id: string) => {
+    deactivateTimer(TIMER_ID);
     setChores(prev => prev.map(c => {
       if (c.id !== id || !c.startedAt) return c;
-      const elapsed = Math.floor((Date.now() - new Date(c.startedAt).getTime()) / 1000) + (c.pausedElapsed ?? 0);
-      return { ...c, startedAt: null, pausedElapsed: elapsed };
+      return closeOpenSegmentC(c, new Date().toISOString());
     }));
-  }, []);
-
-  const handleResumeChore = useCallback((id: string) => {
-    setChores(prev => prev.map(c =>
-      c.id === id ? { ...c, startedAt: new Date().toISOString() } : c
-    ));
   }, []);
 
   const handleEdit = useCallback((id: string, updates: Partial<Pick<Chore, 'title' | 'description' | 'durationMinutes' | 'frequencyDays'>>) => {
@@ -507,6 +607,7 @@ export default function ChorePage() {
             </div>
           ))}
         </div>
+        <ChoreTimesheet chores={chores} />
       </div>
 
       <nav className="toolbar">
@@ -521,6 +622,40 @@ export default function ChorePage() {
       </nav>
 
       <ChoreTimeline chores={chores} />
+
+      {(() => {
+        const active = chores.find(c => c.startedAt);
+        if (!active) return null;
+        return (
+          <div className="active-timer-banner">
+            <span>⏱ 正在计时：</span>
+            <strong>{active.title}</strong>
+            <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 0.8 }}>开始另一个任务会自动暂停它</span>
+          </div>
+        );
+      })()}
+
+      {(() => {
+        // 进行中 + 已暂停的任务，提供快速定位链接
+        const running = chores.filter(c => c.startedAt);
+        const paused = chores.filter(c => !c.startedAt && (c.pausedElapsed ?? 0) > 0 && c.status !== 'done' && c.status !== 'skipped');
+        if (running.length === 0 && paused.length === 0) return null;
+        return (
+          <div className="jump-panel">
+            <span className="jump-panel-label">⚡ 快速定位：</span>
+            {running.map(c => (
+              <button key={c.id} className="jump-chip running" onClick={() => scrollToTask(c.id)} title="跳到该任务">
+                ⏱ {c.title}
+              </button>
+            ))}
+            {paused.map(c => (
+              <button key={c.id} className="jump-chip paused" onClick={() => scrollToTask(c.id)} title="跳到该任务">
+                ⏸ {c.title}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
 
       {showAddForm && (
         <form className="add-task-form" onSubmit={handleAdd}>
@@ -583,7 +718,7 @@ export default function ChorePage() {
             <h3 className="section-overdue">⚠️ 已过期 ({overdueChores.length})</h3>
             {overdueChores.map(chore => (
               <ChoreCard key={chore.id} chore={chore} category="overdue" formatTime={formatTime}
-                onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} allChores={chores} />
+                onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} onAddSubtask={handleAddChoreSubtask} onRenameSubtask={handleRenameChoreSubtask} allChores={chores} />
             ))}
           </div>
         )}
@@ -593,7 +728,7 @@ export default function ChorePage() {
             <h3>🔥 正在进行 ({activeChores.length})</h3>
             {activeChores.map(chore => (
               <ChoreCard key={chore.id} chore={chore} category="active" formatTime={formatTime}
-                onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} allChores={chores} />
+                onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} onAddSubtask={handleAddChoreSubtask} onRenameSubtask={handleRenameChoreSubtask} allChores={chores} />
             ))}
           </div>
         )}
@@ -625,7 +760,7 @@ export default function ChorePage() {
                   <div key={chore.id}>
                     {showSep && <div className="meal-day-separator">{dateLabel}</div>}
                     <ChoreCard chore={chore} category="upcoming" formatTime={formatTime}
-                      onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} allChores={chores} />
+                      onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} onAddSubtask={handleAddChoreSubtask} onRenameSubtask={handleRenameChoreSubtask} allChores={chores} />
                   </div>
                 );
               });
@@ -638,7 +773,7 @@ export default function ChorePage() {
             <h3>📋 未安排时间 ({unscheduledChores.length})</h3>
             {unscheduledChores.map(chore => (
               <ChoreCard key={chore.id} chore={chore} category="unscheduled" formatTime={formatTime}
-                onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} allChores={chores} />
+                onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} onAddSubtask={handleAddChoreSubtask} onRenameSubtask={handleRenameChoreSubtask} allChores={chores} />
             ))}
           </div>
         )}
@@ -658,7 +793,7 @@ export default function ChorePage() {
               <div key={chore.id} className="batch-item">
                 <input type="checkbox" className="batch-checkbox" checked={selectedForDelete.has(chore.id)} onChange={() => toggleSelect(chore.id)} />
                 <ChoreCard chore={chore} category="skipped" formatTime={formatTime}
-                  onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} allChores={chores} />
+                  onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} onAddSubtask={handleAddChoreSubtask} onRenameSubtask={handleRenameChoreSubtask} allChores={chores} />
               </div>
             ))}
           </div>
@@ -690,7 +825,7 @@ export default function ChorePage() {
               <div key={chore.id} className="batch-item">
                 <input type="checkbox" className="batch-checkbox" checked={selectedForDelete.has(chore.id)} onChange={() => toggleSelect(chore.id)} />
                 <ChoreCard chore={chore} category="done" formatTime={formatTime}
-                  onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} allChores={chores} />
+                  onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onReschedule={handleReschedule} onEdit={handleEdit} onStartChore={handleStartChore} onCancelChore={handleCancelChore} onPauseChore={handlePauseChore} onResumeChore={handleResumeChore} onAddSubtask={handleAddChoreSubtask} onRenameSubtask={handleRenameChoreSubtask} allChores={chores} />
               </div>
             ))}
 
@@ -749,10 +884,16 @@ interface ChoreCardProps {
   onCancelChore: (id: string) => void;
   onPauseChore: (id: string) => void;
   onResumeChore: (id: string) => void;
+  onAddSubtask: (id: string, label: string) => void;
+  onRenameSubtask: (choreId: string, subId: string, label: string) => void;
   allChores: Chore[];
 }
 
-function ChoreCard({ chore, category, formatTime, onComplete, onSkip, onDelete, onReschedule, onEdit, onStartChore, onCancelChore, onPauseChore, onResumeChore, allChores }: ChoreCardProps) {
+function ChoreCard({ chore, category, formatTime, onComplete, onSkip, onDelete, onReschedule, onEdit, onStartChore, onCancelChore, onPauseChore, onResumeChore, onAddSubtask, onRenameSubtask, allChores }: ChoreCardProps) {
+  const [newSubLabel, setNewSubLabel] = useState('');
+  const [editingSubId, setEditingSubId] = useState<string | null>(null);
+  const [editSubLabel, setEditSubLabel] = useState('');
+  const [showDistractionReminder, setShowDistractionReminder] = useState(false);
   const [editingTime, setEditingTime] = useState(false);
   const [editTime, setEditTime] = useState('');
   const [editingFields, setEditingFields] = useState(false);
@@ -813,7 +954,7 @@ function ChoreCard({ chore, category, formatTime, onComplete, onSkip, onDelete, 
   const isHighPriority = chore.priority === 'high';
 
   return (
-    <div className={`task-card chore-card ${category} ${isHighPriority ? 'high-priority' : ''}`}>
+    <div className={`task-card chore-card ${category} ${isHighPriority ? 'high-priority' : ''}`} data-chore-id={chore.id}>
       <div className="task-header">
         {!editingFields ? (
           <span className="chore-title">
@@ -923,6 +1064,74 @@ function ChoreCard({ chore, category, formatTime, onComplete, onSkip, onDelete, 
           </div>
         );
       })()}
+
+      {/* 分心记录时间线：正经做家务 + 中途冒出的念头 */}
+      {chore.subtasks && chore.subtasks.length > 1 && (
+        <div className="subtask-timeline">
+          <div className="subtask-timeline-title">🧩 过程记录（含分心念头）</div>
+          {chore.subtasks.map((sub, idx) => {
+            const isActive = chore.activeSubtaskId === sub.id && isTimerRunning;
+            const secs = sub.segments.reduce((s, seg) => {
+              const start = new Date(seg.start).getTime();
+              const end = seg.end ? new Date(seg.end).getTime() : (isActive ? Date.now() : start);
+              return s + Math.max(0, Math.floor((end - start) / 1000));
+            }, 0);
+            const isDistraction = idx > 0; // 第一个是正经家务，之后的都是分心记录
+            return (
+              <div key={sub.id} className={`subtask-row ${isActive ? 'active' : ''}`}>
+                <span className="subtask-dot" />
+                <span className="subtask-index">{isDistraction ? '💭' : `${idx + 1}.`}</span>
+                {editingSubId === sub.id ? (
+                  <input
+                    type="text"
+                    className="form-input-sm subtask-edit-input"
+                    value={editSubLabel}
+                    autoFocus
+                    onChange={e => setEditSubLabel(e.target.value)}
+                    onBlur={() => { onRenameSubtask(chore.id, sub.id, editSubLabel); setEditingSubId(null); }}
+                    onKeyDown={e => { if (e.key === 'Enter') { onRenameSubtask(chore.id, sub.id, editSubLabel); setEditingSubId(null); } }}
+                  />
+                ) : (
+                  <span className="subtask-label" title="点击重命名" onClick={() => { setEditingSubId(sub.id); setEditSubLabel(sub.label); }}>
+                    {sub.label}{isActive && ' ⏱'}
+                  </span>
+                )}
+                <span className="subtask-time">{formatElapsed(secs)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 分心记录输入：做家务中途冒出念头，记一笔、别急着去做 */}
+      {(isTimerRunning || isPaused) && (
+        <>
+          <form
+            className="add-subtask-form"
+            onSubmit={e => {
+              e.preventDefault();
+              if (newSubLabel.trim()) {
+                onAddSubtask(chore.id, newSubLabel);
+                setNewSubLabel('');
+                setShowDistractionReminder(true);
+                setTimeout(() => setShowDistractionReminder(false), 8000);
+              }
+            }}
+          >
+            <input
+              type="text"
+              className="form-input-sm"
+              value={newSubLabel}
+              onChange={e => setNewSubLabel(e.target.value)}
+              placeholder="💭 冒出什么念头？记一笔，别急着去做…"
+            />
+            <button type="submit" className="btn btn-primary btn-sm" disabled={!newSubLabel.trim()}>记下</button>
+          </form>
+          {showDistractionReminder && (
+            <div className="distraction-reminder">😌 记下了。三分钟后再散漫哦～冲动过了往往就不想了。</div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -1085,7 +1294,7 @@ function DoneByDateGroups({ doneChores, selected, onToggle, onToggleGroup, forma
                 <div key={chore.id} className="batch-item">
                   <input type="checkbox" className="batch-checkbox" checked={selected.has(chore.id)} onChange={() => onToggle(chore.id)} />
                   <ChoreCard chore={chore} category="done" formatTime={formatTime}
-                    onComplete={() => {}} onSkip={() => {}} onDelete={onDelete} onReschedule={() => {}} onEdit={() => {}} onStartChore={() => {}} onCancelChore={() => {}} onPauseChore={() => {}} onResumeChore={() => {}} allChores={doneChores} />
+                    onComplete={() => {}} onSkip={() => {}} onDelete={onDelete} onReschedule={() => {}} onEdit={() => {}} onStartChore={() => {}} onCancelChore={() => {}} onPauseChore={() => {}} onResumeChore={() => {}} onAddSubtask={() => {}} onRenameSubtask={() => {}} allChores={doneChores} />
                 </div>
               ))}
           </div>

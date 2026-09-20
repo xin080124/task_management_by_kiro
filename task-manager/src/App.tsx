@@ -5,7 +5,7 @@ import MealPage from './pages/MealPage';
 import WorkPage from './pages/WorkPage';
 import ProjectPage from './pages/ProjectPage';
 import ListenPage from './pages/ListenPage';
-import DazeTimer from './components/DazeTimer';
+import DistractionGate from './components/DistractionGate';
 import './App.css';
 
 type Page = 'review' | 'chores' | 'meals' | 'work' | 'projects' | 'listen';
@@ -89,10 +89,7 @@ function App() {
       {page === 'listen' && <ListenPage />}
 
       <div className="timers-container">
-        <DazeTimer storageKey="task-manager-daze" icon="😶‍🌫️" title="发呆/外散" />
-        <DazeTimer storageKey="task-manager-thoughts" icon="💭" title="违缘+起心动念" withNote retainDays={3} />
-        <DazeTimer storageKey="task-manager-pt" icon="🧘" title="PT计时器" resetOnStop />
-        <DazeTimer storageKey="task-manager-interrupt" icon="🚨" title="被挟持/被打扰" resetOnStop />
+        <DistractionGate />
       </div>
     </div>
   );
