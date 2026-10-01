@@ -2365,12 +2365,11 @@ body {
   border-radius: 8px;
   font-size: 14px;
   color: #495057;
-  cursor: pointer;
   line-height: 1.5;
 }
 
-.distraction-item input {
-  margin-top: 3px;
+.distraction-item input[type="checkbox"] {
+  margin-top: 5px;
   flex-shrink: 0;
 }
 
@@ -2379,8 +2378,68 @@ body {
   color: #2b8a3e;
 }
 
+.distraction-index {
+  margin-top: 4px;
+  color: #adb5bd;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.distraction-text {
+  flex: 1;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.5;
+  color: #495057;
+  background: #fff;
+  resize: vertical;
+}
+
+.distraction-text:focus {
+  outline: none;
+  border-color: #adb5bd;
+}
+
+.distraction-timer {
+  margin-top: 4px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #adb5bd;
+  background: #fff;
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.distraction-timer.running {
+  color: #2f9e44;
+  font-weight: 600;
+}
+
+.distraction-remove {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.distraction-add {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.distraction-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .distraction-approve {
-  width: 100%;
+  flex: 1;
+}
+
+.distraction-giveup {
+  flex-shrink: 0;
 }
 
 .distraction-approve:disabled {

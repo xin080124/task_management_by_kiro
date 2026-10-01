@@ -15,6 +15,8 @@ export default function MealPage() {
   const [initialized, setInitialized] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
+  // 已完成区视图：'list' 列表 | 'title' 按菜名分组表格 | 'date' 按日期分组
+  const [doneViewMode, setDoneViewMode] = useState<'list' | 'title' | 'date'>('list');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form state
@@ -215,6 +217,17 @@ export default function MealPage() {
       const allSelected = ids.every(id => prev.has(id));
       if (allSelected) return new Set();
       return new Set(ids);
+    });
+  }, []);
+
+  // 选择/取消一组 id（按菜名或按日期分组的全选）
+  const toggleSelectGroup = useCallback((ids: string[]) => {
+    setSelectedForDelete(prev => {
+      const next = new Set(prev);
+      const allSelected = ids.every(id => next.has(id));
+      if (allSelected) ids.forEach(id => next.delete(id));
+      else ids.forEach(id => next.add(id));
+      return next;
     });
   }, []);
 
@@ -440,18 +453,51 @@ export default function MealPage() {
             <div className="section-header-with-actions">
               <h3>✅ 已完成 ({doneMeals.length})</h3>
               <div className="batch-actions">
-                <label className="batch-select-all">
-                  <input type="checkbox" checked={doneMeals.length > 0 && doneMeals.every(m => selectedForDelete.has(m.id))} onChange={() => toggleSelectAll(doneMeals.map(m => m.id))} />
-                  全选
-                </label>
+                <div className="view-mode-tabs">
+                  <button className={`view-mode-tab ${doneViewMode === 'list' ? 'active' : ''}`} onClick={() => setDoneViewMode('list')}>列表</button>
+                  <button className={`view-mode-tab ${doneViewMode === 'title' ? 'active' : ''}`} onClick={() => setDoneViewMode('title')}>按菜名</button>
+                  <button className={`view-mode-tab ${doneViewMode === 'date' ? 'active' : ''}`} onClick={() => setDoneViewMode('date')}>按日期</button>
+                </div>
+                {doneViewMode === 'list' && (
+                  <label className="batch-select-all">
+                    <input type="checkbox" checked={doneMeals.length > 0 && doneMeals.every(m => selectedForDelete.has(m.id))} onChange={() => toggleSelectAll(doneMeals.map(m => m.id))} />
+                    全选
+                  </label>
+                )}
+                {selectedForDelete.size > 0 && (
+                  <button className="btn btn-danger btn-sm" onClick={handleBatchDelete}>删除选中 ({selectedForDelete.size})</button>
+                )}
               </div>
             </div>
-            {doneMeals.map(meal => (
+
+            {doneViewMode === 'list' && doneMeals.map(meal => (
               <div key={meal.id} className="batch-item">
                 <input type="checkbox" className="batch-checkbox" checked={selectedForDelete.has(meal.id)} onChange={() => toggleSelect(meal.id)} />
                 <MealCard meal={meal} onComplete={handleComplete} onSkip={handleSkip} onDelete={handleDelete} onEdit={handleEdit} />
               </div>
             ))}
+
+            {doneViewMode === 'title' && (
+              <DoneMealsByTitle
+                doneMeals={doneMeals}
+                selected={selectedForDelete}
+                onToggle={toggleSelect}
+                onToggleGroup={toggleSelectGroup}
+              />
+            )}
+
+            {doneViewMode === 'date' && (
+              <DoneMealsByDate
+                doneMeals={doneMeals}
+                selected={selectedForDelete}
+                onToggle={toggleSelect}
+                onToggleGroup={toggleSelectGroup}
+                onComplete={handleComplete}
+                onSkip={handleSkip}
+                onDelete={handleDelete}
+                onEdit={handleEdit}
+              />
+            )}
           </div>
         )}
 
@@ -597,6 +643,171 @@ function MealCard({ meal, onComplete, onSkip, onDelete, onEdit }: MealCardProps)
       {isDone && meal.completedAt && (
         <div className="chore-time-info done-info">完成于 {new Date(meal.completedAt).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
       )}
+    </div>
+  );
+}
+
+// ===== 按菜名分组表格：可看到出现频率超过 10 的菜 =====
+interface DoneMealGroupProps {
+  doneMeals: Meal[];
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+  onToggleGroup: (ids: string[]) => void;
+}
+
+function DoneMealsByTitle({ doneMeals, selected, onToggle, onToggleGroup }: DoneMealGroupProps) {
+  const [expandedTitle, setExpandedTitle] = useState<string | null>(null);
+  const [onlyFrequent, setOnlyFrequent] = useState(false);
+
+  // 按菜名分组
+  const groups = new Map<string, Meal[]>();
+  for (const m of doneMeals) {
+    if (!groups.has(m.dish)) groups.set(m.dish, []);
+    groups.get(m.dish)!.push(m);
+  }
+
+  let rows = Array.from(groups.entries()).map(([dish, items]) => ({
+    dish,
+    items: [...items].sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime()),
+    count: items.length,
+    totalMinutes: items.reduce((s, i) => s + i.prepMinutes, 0),
+  }));
+
+  rows.sort((a, b) => b.count - a.count);
+  const frequentRows = rows.filter(r => r.count > 10);
+  if (onlyFrequent) rows = frequentRows;
+
+  const fmtTime = (iso: string) => new Date(iso).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <div className="done-title-view">
+      <div className="done-title-toolbar">
+        <label className="batch-select-all">
+          <input type="checkbox" checked={onlyFrequent} onChange={() => setOnlyFrequent(v => !v)} />
+          只看高频（出现 &gt; 10 次）
+        </label>
+        <span className="done-title-hint">共 {rows.length} 种，高频 {frequentRows.length} 种</span>
+      </div>
+      <table className="chore-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>菜名</th>
+            <th>出现次数</th>
+            <th>总备餐时长</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => {
+            const ids = r.items.map(i => i.id);
+            const allSelected = ids.every(id => selected.has(id));
+            const isFrequent = r.count > 10;
+            const isExpanded = expandedTitle === r.dish;
+            return (
+              <>
+                <tr key={r.dish} className={isFrequent ? 'row-frequent' : ''}>
+                  <td>
+                    <input type="checkbox" checked={allSelected} onChange={() => onToggleGroup(ids)} title="按菜名全选这一类" />
+                  </td>
+                  <td className="cell-title">
+                    {isFrequent && <span className="freq-badge" title="出现频率超过 10 次">🔥</span>}
+                    {r.dish}
+                  </td>
+                  <td className={isFrequent ? 'cell-count frequent' : 'cell-count'}>{r.count}</td>
+                  <td>{r.totalMinutes} 分钟</td>
+                  <td>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setExpandedTitle(isExpanded ? null : r.dish)}>
+                      {isExpanded ? '收起' : '展开'}
+                    </button>
+                  </td>
+                </tr>
+                {isExpanded && (
+                  <tr className="detail-row">
+                    <td></td>
+                    <td colSpan={4}>
+                      <table className="chore-subtable">
+                        <thead>
+                          <tr>
+                            <th></th>
+                            <th>完成时间</th>
+                            <th>餐次</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {r.items.map(item => (
+                            <tr key={item.id}>
+                              <td>
+                                <input type="checkbox" checked={selected.has(item.id)} onChange={() => onToggle(item.id)} />
+                              </td>
+                              <td>{item.completedAt ? fmtTime(item.completedAt) : '-'}</td>
+                              <td>{MEAL_TIME_LABELS[item.mealTime]}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                )}
+              </>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ===== 按日期分组：可按日期全选 =====
+interface DoneMealByDateProps extends DoneMealGroupProps {
+  onComplete: (id: string) => void;
+  onSkip: (id: string) => void;
+  onDelete: (id: string) => void;
+  onEdit: (id: string, updates: Partial<Pick<Meal, 'dish' | 'prepMinutes' | 'frequencyDays' | 'mealTime' | 'scheduledDate'>>) => void;
+}
+
+function DoneMealsByDate({ doneMeals, selected, onToggle, onToggleGroup, onComplete, onSkip, onDelete, onEdit }: DoneMealByDateProps) {
+  // 按完成日期(本地时区)分组
+  const groups = new Map<string, Meal[]>();
+  for (const m of doneMeals) {
+    if (!m.completedAt) continue;
+    const d = new Date(m.completedAt);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(m);
+  }
+
+  const sortedDates = Array.from(groups.keys()).sort((a, b) => b.localeCompare(a));
+  const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+  return (
+    <div className="done-date-view">
+      {sortedDates.map(date => {
+        const items = groups.get(date)!;
+        const ids = items.map(i => i.id);
+        const allSelected = ids.every(id => selected.has(id));
+        const d = new Date(date + 'T00:00:00');
+        const total = items.reduce((s, i) => s + i.prepMinutes, 0);
+        return (
+          <div key={date} className="date-group">
+            <div className="date-group-header">
+              <label className="batch-select-all">
+                <input type="checkbox" checked={allSelected} onChange={() => onToggleGroup(ids)} title="按日期全选" />
+                {date} ({days[d.getDay()]})
+              </label>
+              <span className="date-group-summary">{items.length} 道 · 共 {total} 分钟</span>
+            </div>
+            {items
+              .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime())
+              .map(meal => (
+                <div key={meal.id} className="batch-item">
+                  <input type="checkbox" className="batch-checkbox" checked={selected.has(meal.id)} onChange={() => onToggle(meal.id)} />
+                  <MealCard meal={meal} onComplete={onComplete} onSkip={onSkip} onDelete={onDelete} onEdit={onEdit} />
+                </div>
+              ))}
+          </div>
+        );
+      })}
     </div>
   );
 }

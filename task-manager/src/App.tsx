@@ -6,6 +6,7 @@ import WorkPage from './pages/WorkPage';
 import ProjectPage from './pages/ProjectPage';
 import ListenPage from './pages/ListenPage';
 import DistractionGate from './components/DistractionGate';
+import AdversityGate from './components/AdversityGate';
 import './App.css';
 
 type Page = 'review' | 'chores' | 'meals' | 'work' | 'projects' | 'listen';
@@ -90,6 +91,7 @@ function App() {
 
       <div className="timers-container">
         <DistractionGate />
+        <AdversityGate />
       </div>
     </div>
   );
