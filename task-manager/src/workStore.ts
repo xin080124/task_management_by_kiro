@@ -52,7 +52,7 @@ export function generateWorkId(): string {
 
 // CSV export
 export function exportWorkToCsv(entries: WorkEntry[]): string {
-  const headers = ['id', 'task', 'project', 'category', 'scheduledDate', 'durationMinutes', 'actualMinutes', 'startedAt', 'pausedElapsed', 'segments', 'subtasks', 'activeSubtaskId', 'frequencyDays', 'skippedDates', 'status', 'createdAt', 'completedAt'];
+  const headers = ['id', 'task', 'project', 'category', 'scheduledDate', 'scheduledAt', 'durationMinutes', 'actualMinutes', 'startedAt', 'pausedElapsed', 'segments', 'subtasks', 'activeSubtaskId', 'frequencyDays', 'skippedDates', 'status', 'createdAt', 'completedAt'];
   const rows = entries.map(entry =>
     headers.map(h => {
       // segments / subtasks 用 JSON 序列化存进单个字段
@@ -124,6 +124,7 @@ export function importWorkFromCsv(csvContent: string): WorkEntry[] {
       project: obj.project || '',
       category: (obj.category as WorkEntry['category']) || 'other',
       scheduledDate: obj.scheduledDate || new Date().toISOString().slice(0, 10),
+      scheduledAt: obj.scheduledAt || null,
       durationMinutes: parseInt(obj.durationMinutes) || 30,
       actualMinutes: obj.actualMinutes ? parseInt(obj.actualMinutes) : null,
       startedAt: obj.startedAt || null,

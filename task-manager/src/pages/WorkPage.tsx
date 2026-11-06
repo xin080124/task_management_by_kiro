@@ -51,6 +51,12 @@ function openSegmentForSubtask(entry: WorkEntry, subtaskId: string, startIso: st
   return { ...entry, startedAt: startIso, activeSubtaskId: subtaskId, subtasks };
 }
 
+// 和家务页一致：显示时刻用 toLocaleString 转回本地时区
+function formatTime(isoStr: string): string {
+  const d = new Date(isoStr);
+  return d.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
 const CATEGORY_LABELS: Record<WorkCategory, string> = {
   coding: '💻 编码',
   meeting: '🗣️ 会议',
@@ -71,7 +77,7 @@ export default function WorkPage() {
   const [newTask, setNewTask] = useState('');
   const [newProject, setNewProject] = useState('');
   const [newCategory, setNewCategory] = useState<WorkCategory>('coding');
-  const [newDate, setNewDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [newScheduledAt, setNewScheduledAt] = useState('');
   const [newDuration, setNewDuration] = useState(60);
   const [newFrequency, setNewFrequency] = useState(0);
 
@@ -106,8 +112,18 @@ export default function WorkPage() {
     .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime());
   const skippedEntries = entries.filter(e => getCategory(e) === 'skipped');
 
-  todayEntries.sort((a, b) => categoryOrder(a.category) - categoryOrder(b.category));
-  upcomingEntries.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
+  // 「今天」按时间先后排序：优先用具体时刻 scheduledAt，没有就退回用当天日期 scheduledDate，
+  // 这样有时刻和没时刻的任务也能统一比较，时间相同再按类别兜底
+  todayEntries.sort((a, b) => {
+    const ka = new Date(a.scheduledAt ?? `${a.scheduledDate}T00:00`).getTime();
+    const kb = new Date(b.scheduledAt ?? `${b.scheduledDate}T00:00`).getTime();
+    if (ka !== kb) return ka - kb;
+    return categoryOrder(a.category) - categoryOrder(b.category);
+  });
+  // 「之后」优先按具体时刻排，没有时刻的退回按日期排
+  upcomingEntries.sort((a, b) =>
+    (a.scheduledAt ?? a.scheduledDate).localeCompare(b.scheduledAt ?? b.scheduledDate)
+  );
 
   // Project future recurring entries (3 days)
   const projectedEntries: WorkEntry[] = [];
@@ -125,12 +141,15 @@ export default function WorkPage() {
           existing.status !== 'done' && existing.status !== 'skipped'
         );
         if (!exists) {
+          // 保留原任务的时刻(HH:mm)，只把日期换成投影日
+          const timePart = e.scheduledAt ? e.scheduledAt.slice(10) : ''; // 形如 'T23:10' 或 ''
           projectedEntries.push({
             id: `proj-${e.id}-${dStr}`,
             task: e.task,
             project: e.project ?? '',
             category: e.category,
             scheduledDate: dStr,
+            scheduledAt: timePart ? `${dStr}${timePart}` : null,
             durationMinutes: e.durationMinutes,
             actualMinutes: null,
             startedAt: null,
@@ -151,7 +170,9 @@ export default function WorkPage() {
   }
 
   const allUpcoming = [...upcomingEntries, ...projectedEntries];
-  allUpcoming.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
+  allUpcoming.sort((a, b) =>
+    (a.scheduledAt ?? a.scheduledDate).localeCompare(b.scheduledAt ?? b.scheduledDate)
+  );
 
   // Stats
   const todayPlannedMinutes = todayEntries.reduce((s, e) => s + e.durationMinutes, 0);
@@ -178,7 +199,8 @@ export default function WorkPage() {
       task: newTask.trim(),
       project: newProject.trim(),
       category: newCategory,
-      scheduledDate: newDate,
+      scheduledDate: newScheduledAt ? newScheduledAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+      scheduledAt: newScheduledAt || null,
       durationMinutes: newDuration,
       actualMinutes: null,
       startedAt: null,
@@ -196,6 +218,7 @@ export default function WorkPage() {
     setEntries(prev => [...prev, entry]);
     setNewTask('');
     setNewProject('');
+    setNewScheduledAt('');
     setNewDuration(60);
     setNewFrequency(0);
     setShowAddForm(false);
@@ -307,13 +330,19 @@ export default function WorkPage() {
 
       const completed = updated.find(e => e.id === id);
       if (completed && completed.frequencyDays > 0) {
-        const nextDate = new Date(new Date(completed.scheduledDate).getTime() + completed.frequencyDays * 24 * 60 * 60 * 1000);
+        const [cy, cm, cd] = completed.scheduledDate.split('-').map(n => parseInt(n, 10));
+        const nd = new Date(cy, cm - 1, cd);
+        nd.setDate(nd.getDate() + completed.frequencyDays);
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const nextDateStr = `${nd.getFullYear()}-${pad(nd.getMonth() + 1)}-${pad(nd.getDate())}`;
+        const timePart = completed.scheduledAt ? completed.scheduledAt.slice(10) : '';
         const next: WorkEntry = {
           id: generateWorkId(),
           task: completed.task,
           project: completed.project ?? '',
           category: completed.category,
-          scheduledDate: nextDate.toISOString().slice(0, 10),
+          scheduledDate: nextDateStr,
+          scheduledAt: timePart ? `${nextDateStr}${timePart}` : null,
           durationMinutes: completed.durationMinutes,
           actualMinutes: null,
           startedAt: null,
@@ -347,13 +376,19 @@ export default function WorkPage() {
 
       const skipped = updated.find(e => e.id === id);
       if (skipped && skipped.frequencyDays > 0) {
-        const nextDate = new Date(new Date(skipped.scheduledDate).getTime() + skipped.frequencyDays * 24 * 60 * 60 * 1000);
+        const [sy, sm, sd] = skipped.scheduledDate.split('-').map(n => parseInt(n, 10));
+        const nd = new Date(sy, sm - 1, sd);
+        nd.setDate(nd.getDate() + skipped.frequencyDays);
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const nextDateStr = `${nd.getFullYear()}-${pad(nd.getMonth() + 1)}-${pad(nd.getDate())}`;
+        const timePart = skipped.scheduledAt ? skipped.scheduledAt.slice(10) : '';
         const next: WorkEntry = {
           id: generateWorkId(),
           task: skipped.task,
           project: skipped.project ?? '',
           category: skipped.category,
-          scheduledDate: nextDate.toISOString().slice(0, 10),
+          scheduledDate: nextDateStr,
+          scheduledAt: timePart ? `${nextDateStr}${timePart}` : null,
           durationMinutes: skipped.durationMinutes,
           actualMinutes: null,
           startedAt: null,
@@ -405,7 +440,7 @@ export default function WorkPage() {
     });
   }, []);
 
-  const handleEdit = useCallback((id: string, updates: Partial<Pick<WorkEntry, 'task' | 'project' | 'category' | 'durationMinutes' | 'frequencyDays' | 'scheduledDate'>>) => {
+  const handleEdit = useCallback((id: string, updates: Partial<Pick<WorkEntry, 'task' | 'project' | 'category' | 'durationMinutes' | 'frequencyDays' | 'scheduledDate' | 'scheduledAt'>>) => {
     setEntries(prev => prev.map(e =>
       e.id === id ? { ...e, ...updates } : e
     ));
@@ -493,8 +528,14 @@ export default function WorkPage() {
 
       {(() => {
         // 进行中 + 已暂停的任务，提供快速定位链接
-        const running = entries.filter(e => e.startedAt);
-        const paused = entries.filter(e => !e.startedAt && (e.pausedElapsed ?? 0) > 0 && e.status === 'in-progress');
+        // 两组都按计划时间排序：优先具体时刻 scheduledAt，没有就退回用当天日期 scheduledDate
+        const bySchedule = (a: WorkEntry, b: WorkEntry) => {
+          const ka = new Date(a.scheduledAt ?? `${a.scheduledDate}T00:00`).getTime();
+          const kb = new Date(b.scheduledAt ?? `${b.scheduledDate}T00:00`).getTime();
+          return ka - kb;
+        };
+        const running = entries.filter(e => e.startedAt).sort(bySchedule);
+        const paused = entries.filter(e => !e.startedAt && (e.pausedElapsed ?? 0) > 0 && e.status === 'in-progress').sort(bySchedule);
         if (running.length === 0 && paused.length === 0) return null;
         return (
           <div className="jump-panel">
@@ -555,12 +596,12 @@ export default function WorkPage() {
             </select>
           </div>
           <div className="form-group">
-            <label htmlFor="work-date">日期</label>
+            <label htmlFor="work-datetime">日期与时间</label>
             <input
-              id="work-date"
-              type="date"
-              value={newDate}
-              onChange={e => setNewDate(e.target.value)}
+              id="work-datetime"
+              type="datetime-local"
+              value={newScheduledAt}
+              onChange={e => setNewScheduledAt(e.target.value)}
               className="form-input"
             />
           </div>
@@ -698,7 +739,7 @@ interface WorkCardProps {
   onComplete: (id: string) => void;
   onSkip: (id: string) => void;
   onDelete: (id: string) => void;
-  onEdit: (id: string, updates: Partial<Pick<WorkEntry, 'task' | 'project' | 'category' | 'durationMinutes' | 'frequencyDays' | 'scheduledDate'>>) => void;
+  onEdit: (id: string, updates: Partial<Pick<WorkEntry, 'task' | 'project' | 'category' | 'durationMinutes' | 'frequencyDays' | 'scheduledDate' | 'scheduledAt'>>) => void;
   onAddSubtask: (id: string, label: string) => void;
   onRenameSubtask: (entryId: string, subId: string, label: string) => void;
 }
@@ -713,7 +754,8 @@ function WorkCard({ entry, onStart, onPause, onResume, onComplete, onSkip, onDel
   const [editDuration, setEditDuration] = useState(entry.durationMinutes);
   const [editFreq, setEditFreq] = useState(entry.frequencyDays);
   const [editCategory, setEditCategory] = useState(entry.category);
-  const [editDate, setEditDate] = useState(entry.scheduledDate);
+  // 编辑用的本地 datetime 值：优先用已有 scheduledAt，否则用日期补一个默认 09:00
+  const [editDateTime, setEditDateTime] = useState(entry.scheduledAt ?? `${entry.scheduledDate}T09:00`);
   const [elapsed, setElapsed] = useState(0);
 
   const isRunning = !!entry.startedAt; // 当前正在跑（有进行中的段）
@@ -740,7 +782,8 @@ function WorkCard({ entry, onStart, onPause, onResume, onComplete, onSkip, onDel
       durationMinutes: editDuration,
       frequencyDays: editFreq,
       category: editCategory,
-      scheduledDate: editDate,
+      scheduledDate: editDateTime.slice(0, 10),
+      scheduledAt: editDateTime,
     });
     setEditing(false);
   };
@@ -751,7 +794,7 @@ function WorkCard({ entry, onStart, onPause, onResume, onComplete, onSkip, onDel
     setEditDuration(entry.durationMinutes);
     setEditFreq(entry.frequencyDays);
     setEditCategory(entry.category);
-    setEditDate(entry.scheduledDate);
+    setEditDateTime(entry.scheduledAt ?? `${entry.scheduledDate}T09:00`);
     setEditing(false);
   };
 
@@ -810,8 +853,8 @@ function WorkCard({ entry, onStart, onPause, onResume, onComplete, onSkip, onDel
             </select>
           </div>
           <div className="edit-row">
-            <label>日期</label>
-            <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="form-input-sm" />
+            <label>日期与时间</label>
+            <input type="datetime-local" value={editDateTime} onChange={e => setEditDateTime(e.target.value)} className="form-input-sm" />
           </div>
           <div className="edit-row">
             <label>预估(分)</label>
@@ -828,7 +871,7 @@ function WorkCard({ entry, onStart, onPause, onResume, onComplete, onSkip, onDel
         </div>
       )}
 
-      <div className="chore-time-info">{entry.scheduledDate}</div>
+      <div className="chore-time-info">{entry.scheduledAt ? formatTime(entry.scheduledAt) : entry.scheduledDate}</div>
 
       {!isDone && !isSkipped && (
         <div className="chore-actions">

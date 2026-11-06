@@ -1,13 +1,45 @@
 import type { Task } from './types';
+import { MAX_LEVEL } from './types';
 
 const STORAGE_KEY = 'task-manager-tasks';
+
+// 把一条可能是「老格式」的记录迁移到新模型：
+// 老格式 status 是 open/p1../p5，没有 level 字段。
+//   - 旧 'p1'..'p5' → level 1..5，status 变 waiting（熟练度保留在 level）
+//   - 旧 'open'     → level 0，status open
+// 新格式（已有数字 level，status 为 open/waiting）则原样保留。
+function migrateTask(raw: Task & { status: string }): Task {
+  let level: number;
+  let status: Task['status'];
+
+  if (typeof (raw as { level?: unknown }).level === 'number') {
+    // 已是新格式
+    level = Math.max(0, Math.min((raw as { level: number }).level, MAX_LEVEL));
+    status = raw.status === 'waiting' ? 'waiting' : 'open';
+  } else if (/^p[1-5]$/.test(raw.status)) {
+    // 老格式 p1..p5
+    level = parseInt(raw.status.slice(1), 10);
+    status = 'waiting';
+  } else {
+    // 老格式 open（或任何未知值）
+    level = 0;
+    status = 'open';
+  }
+
+  return {
+    ...raw,
+    level,
+    status,
+    starred: raw.starred ?? false,
+  } as Task;
+}
 
 export function loadTasks(): Task[] {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
     if (!data) return [];
-    const tasks: Task[] = JSON.parse(data);
-    return tasks.map(t => ({ ...t, starred: t.starred ?? false }));
+    const tasks = JSON.parse(data) as (Task & { status: string })[];
+    return tasks.map(migrateTask);
   } catch {
     return [];
   }
@@ -23,7 +55,7 @@ export function generateId(): string {
 
 // CSV export
 export function exportToCsv(tasks: Task[]): string {
-  const headers = ['id', 'type', 'question', 'answer', 'status', 'nextReviewDate', 'createdAt', 'lastReviewedAt', 'starred'];
+  const headers = ['id', 'type', 'question', 'answer', 'status', 'level', 'nextReviewDate', 'createdAt', 'lastReviewedAt', 'starred'];
   const rows = tasks.map(task =>
     headers.map(h => {
       const value = task[h as keyof Task] ?? '';
@@ -55,12 +87,27 @@ export function importFromCsv(csvContent: string): Task[] {
       obj[h] = values[idx] || '';
     });
 
+    // 兼容老 CSV：status 可能是 p1..p5（没有 level 列）
+    let level: number;
+    let status: Task['status'];
+    if (obj.level !== '' && obj.level !== undefined) {
+      level = Math.max(0, Math.min(parseInt(obj.level, 10) || 0, MAX_LEVEL));
+      status = obj.status === 'waiting' ? 'waiting' : 'open';
+    } else if (/^p[1-5]$/.test(obj.status)) {
+      level = parseInt(obj.status.slice(1), 10);
+      status = 'waiting';
+    } else {
+      level = 0;
+      status = 'open';
+    }
+
     tasks.push({
       id: obj.id || generateId(),
       type: (obj.type as Task['type']) || 'gold',
       question: obj.question || '',
       answer: obj.answer || '',
-      status: (obj.status as Task['status']) || 'open',
+      status,
+      level,
       nextReviewDate: obj.nextReviewDate || new Date().toISOString(),
       createdAt: obj.createdAt || new Date().toISOString(),
       lastReviewedAt: obj.lastReviewedAt || null,

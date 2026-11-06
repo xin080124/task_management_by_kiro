@@ -380,6 +380,11 @@ function StoryCard({ story, expanded, onToggle, onDelete, onUpdateStatus, onEdit
           >
             {checkedInToday ? '✓ 今天已打卡' : '📌 打卡'}
           </button>
+          {story.lastCheckinAt && (
+            <span className="chore-time-info">
+              上次打卡: {formatTime(story.lastCheckinAt)}
+            </span>
+          )}
           {story.scheduledAt && (
             <span className={`chore-time-info ${isDue ? 'overdue-text' : ''}`}>
               {isDue ? '⚠️ 应打卡: ' : '下次打卡: '}{formatTime(story.scheduledAt)}

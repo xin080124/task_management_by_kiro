@@ -1,6 +1,11 @@
 export type TaskType = 'gold' | 'aws';
 
-export type TaskStatus = 'open' | 'p1' | 'p2' | 'p3' | 'p4' | 'p5';
+// 状态只分两种：open=该复习（已到期），waiting=还没到期（灰）。
+// 熟练度不再混进 status，而是用独立的 level 表示。
+export type TaskStatus = 'open' | 'waiting';
+
+// 熟练度等级 0..5。每 Pass 一次 +1（封顶 5），Fail 归 0。
+export const MAX_LEVEL = 5;
 
 export interface Task {
   id: string;
@@ -8,21 +13,22 @@ export interface Task {
   question: string;
   answer: string;
   status: TaskStatus;
+  level: number; // 熟练度 0..5，决定下次复习间隔
   nextReviewDate: string; // ISO date string
   createdAt: string;
   lastReviewedAt: string | null;
   starred?: boolean; // 星标：重点关注的题目
 }
 
-// Interval in days for each status level
-export const REVIEW_INTERVALS: Record<TaskStatus, number> = {
-  open: 0,
-  p1: 3,
-  p2: 5,
-  p3: 30,
-  p4: 90,
-  p5: 180,
-};
+// 每个 level 对应的复习间隔（天）。索引即 level：
+// level 0 → 0天(立即)，1 → 3天，2 → 5天，3 → 30天，4 → 90天，5 → 180天
+export const REVIEW_INTERVALS: number[] = [0, 3, 5, 30, 90, 180];
+
+// 取某个 level 的间隔天数（level 封顶在 MAX_LEVEL）
+export function intervalForLevel(level: number): number {
+  const clamped = Math.max(0, Math.min(level, MAX_LEVEL));
+  return REVIEW_INTERVALS[clamped];
+}
 
 // ===== Chore types =====
 
@@ -93,7 +99,8 @@ export interface WorkEntry {
   task: string; // 任务描述
   project: string; // 项目名称
   category: WorkCategory;
-  scheduledDate: string; // ISO date string (YYYY-MM-DD)
+  scheduledDate: string; // 本地日期 (YYYY-MM-DD)，用于按天分类
+  scheduledAt?: string | null; // 本地具体时刻 (YYYY-MM-DDTHH:mm)，不含时区、不转 UTC；可选
   durationMinutes: number; // 预估时长
   actualMinutes: number | null; // 实际时长，自动计算
   startedAt: string | null; // ISO datetime, 点开始时记录（= 当前进行中那段的开始）

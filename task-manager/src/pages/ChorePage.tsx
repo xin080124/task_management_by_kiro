@@ -56,6 +56,8 @@ export default function ChorePage() {
   // 已完成区视图：'list' 列表 | 'title' 按标题分组表格 | 'date' 按日期分组
   const [doneViewMode, setDoneViewMode] = useState<'list' | 'title' | 'date'>('list');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 保存当前渲染出的「投影未来任务」，供操作回调把它落地成真实任务
+  const projectedRef = useRef<Chore[]>([]);
 
   // Form state
   const [newTitle, setNewTitle] = useState('');
@@ -158,6 +160,9 @@ export default function ChorePage() {
     }
   }
 
+  // 让操作回调能访问到当前这批投影任务
+  projectedRef.current = projectedChores;
+
   // Merge projected into upcoming
   const allUpcoming = [...upcomingChores, ...projectedChores];
 
@@ -197,11 +202,32 @@ export default function ChorePage() {
     setShowAddForm(false);
   };
 
-  const handleComplete = useCallback((id: string) => {
+  // 把一条投影任务（id 以 proj- 开头）落地成真实任务。
+  // 返回 { id, materialized }：id 是后续操作应使用的真实 id；
+  // materialized 为落地出来的真实 chore（若非投影任务则为 null）。
+  // 真实 id 由投影 id 决定（proj- 前缀换成 ch-），保证同一张投影卡多次操作得到同一个真实 id。
+  const materializeProjected = useCallback((id: string): { id: string; chore: Chore | null } => {
+    if (!id.startsWith('proj-')) return { id, chore: null };
+    const realId = 'ch-' + id.slice('proj-'.length);
+    const src = projectedRef.current.find(p => p.id === id);
+    if (!src) return { id: realId, chore: null };
+    const chore: Chore = {
+      ...src,
+      id: realId,
+      subtasks: defaultChoreSubtasks(),
+      activeSubtaskId: null,
+      createdAt: new Date().toISOString(),
+    };
+    return { id: realId, chore };
+  }, []);
+
+  const handleComplete = useCallback((rawId: string) => {
     deactivateTimer(TIMER_ID);
+    const { id, chore: materialized } = materializeProjected(rawId);
     setChores(prev => {
       const nowIso = new Date().toISOString();
-      const updated = prev.map(c => {
+      const base = materialized && !prev.some(c => c.id === id) ? [...prev, materialized] : prev;
+      const updated = base.map(c => {
         if (c.id !== id) return c;
         // 关闭进行中的段，再按所有子步骤总和算实际用时
         const closed = closeOpenSegmentC(c, nowIso);
@@ -251,12 +277,14 @@ export default function ChorePage() {
 
       return updated;
     });
-  }, []);
+  }, [materializeProjected]);
 
-  const handleSkip = useCallback((id: string) => {
+  const handleSkip = useCallback((rawId: string) => {
+    const { id, chore: materialized } = materializeProjected(rawId);
     setChores(prev => {
       const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-      const updated = prev.map(c =>
+      const base = materialized && !prev.some(c => c.id === id) ? [...prev, materialized] : prev;
+      const updated = base.map(c =>
         c.id === id ? {
           ...c,
           status: 'skipped' as const,
@@ -304,9 +332,11 @@ export default function ChorePage() {
 
       return updated;
     });
-  }, []);
+  }, [materializeProjected]);
 
   const handleDelete = useCallback((id: string) => {
+    // 投影任务不在 state 里，无需真正删除（下一次渲染不满足条件自然不再出现）
+    if (id.startsWith('proj-')) return;
     if (confirm('确定删除这个家务？')) {
       setChores(prev => prev.filter(c => c.id !== id));
     }
@@ -358,23 +388,28 @@ export default function ChorePage() {
   }, []);
 
   // 开始/继续：单一活跃计时器——先暂停其它所有正在跑的家务，再给目标家务的活跃子步骤开一段
-  const startChoreTimer = useCallback((id: string) => {
+  const startChoreTimer = useCallback((rawId: string) => {
     // 全局互斥：先停掉别的类型的计时器（工作等）
     activateTimer(TIMER_ID, pauseRunningChores);
     const nowIso = new Date().toISOString();
-    setChores(prev => prev.map(c => {
-      if (c.id === id) {
-        const targetSubId = c.activeSubtaskId ?? c.subtasks[0]?.id;
-        if (!targetSubId) return c;
-        return openSegmentForSubtaskC(c, targetSubId, nowIso);
-      }
-      // 其它正在跑的家务：自动暂停（关闭其进行中的段）
-      if (c.startedAt) {
-        return closeOpenSegmentC(c, nowIso);
-      }
-      return c;
-    }));
-  }, [pauseRunningChores]);
+    // 若点的是投影任务，先把它落地成真实任务
+    const { id, chore: materialized } = materializeProjected(rawId);
+    setChores(prev => {
+      const base = materialized && !prev.some(c => c.id === id) ? [...prev, materialized] : prev;
+      return base.map(c => {
+        if (c.id === id) {
+          const targetSubId = c.activeSubtaskId ?? c.subtasks[0]?.id;
+          if (!targetSubId) return c;
+          return openSegmentForSubtaskC(c, targetSubId, nowIso);
+        }
+        // 其它正在跑的家务：自动暂停（关闭其进行中的段）
+        if (c.startedAt) {
+          return closeOpenSegmentC(c, nowIso);
+        }
+        return c;
+      });
+    });
+  }, [pauseRunningChores, materializeProjected]);
 
   const handleStartChore = startChoreTimer;
   const handleResumeChore = startChoreTimer;

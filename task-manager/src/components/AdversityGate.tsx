@@ -10,8 +10,8 @@ export default function AdversityGate() {
     <ReflectionGate
       storageKey="task-manager-adversity-reflections"
       defaults={DEFAULT_ITEMS}
-      triggerLabel="🌊 遇到违缘了"
-      title="违缘处理"
+      triggerLabel="🌊 又没时间上座了"
+      title="又没时间上座了"
       hint="逐条读一遍并勾选（勾选后开始计时，看你花多久转化这个违缘）："
       approveLabel="🙏 转为道用"
       grantedTitle="已转为道用 🙏"

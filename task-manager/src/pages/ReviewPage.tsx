@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Task, TaskType, TaskStatus } from '../types';
-import { REVIEW_INTERVALS } from '../types';
+import { MAX_LEVEL, intervalForLevel } from '../types';
 import { loadTasks, saveTasks } from '../store';
 import TaskList from '../components/TaskList';
 import AddTaskForm from '../components/AddTaskForm';
@@ -26,39 +26,43 @@ export default function ReviewPage() {
     }
   }, [tasks, initialized]);
 
+  // 到期(nextReviewDate <= now)的 waiting 题自动变回 open（该复习）。
+  // 只改 status，level（熟练度）保持不变 —— 到期不降级。
   const promoteDueTasks = (taskList: Task[]): Task[] => {
     const now = new Date();
     return taskList.map(task => {
-      if (task.status !== 'open' && new Date(task.nextReviewDate) <= now) {
+      if (task.status === 'waiting' && new Date(task.nextReviewDate) <= now) {
         return { ...task, status: 'open' as TaskStatus };
       }
       return task;
     });
   };
 
+  // 答对：level +1（封顶 MAX_LEVEL），按新 level 的间隔推下次复习，转为 waiting。
   const handlePass = useCallback((id: string) => {
     setTasks(prev => prev.map(task => {
       if (task.id !== id) return task;
-      const levels: TaskStatus[] = ['open', 'p1', 'p2', 'p3', 'p4', 'p5'];
-      const currentIdx = levels.indexOf(task.status);
-      const nextStatus: TaskStatus = currentIdx < 5 ? levels[currentIdx + 1] : 'p5';
-      const interval = REVIEW_INTERVALS[nextStatus];
+      const nextLevel = Math.min(task.level + 1, MAX_LEVEL);
+      const interval = intervalForLevel(nextLevel);
       const nextDate = new Date();
       nextDate.setDate(nextDate.getDate() + interval);
       return {
         ...task,
-        status: nextStatus,
+        level: nextLevel,
+        status: 'waiting' as TaskStatus,
         nextReviewDate: nextDate.toISOString(),
         lastReviewedAt: new Date().toISOString(),
       };
     }));
   }, []);
 
+  // 答错：level 归 0，立即可复习（open）。
   const handleFail = useCallback((id: string) => {
     setTasks(prev => prev.map(task => {
       if (task.id !== id) return task;
       return {
         ...task,
+        level: 0,
         status: 'open' as TaskStatus,
         nextReviewDate: new Date().toISOString(),
         lastReviewedAt: new Date().toISOString(),
@@ -97,7 +101,8 @@ export default function ReviewPage() {
     });
   };
 
-  const openCount = tasks.filter(t => t.status === 'open' || new Date(t.nextReviewDate) <= new Date()).length;
+  const now = new Date();
+  const openCount = tasks.filter(t => t.status === 'open' || new Date(t.nextReviewDate) <= now).length;
   const totalCount = tasks.length;
   const starredCount = tasks.filter(t => t.starred).length;
 

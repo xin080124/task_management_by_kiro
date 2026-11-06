@@ -22,6 +22,7 @@ export default function AddTaskForm({ onAdd, onCancel }: Props) {
       question: question.trim(),
       answer: answer.trim(),
       status: 'open',
+      level: 0,
       nextReviewDate: new Date().toISOString(),
       createdAt: new Date().toISOString(),
       lastReviewedAt: null,

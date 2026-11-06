@@ -16,10 +16,11 @@ export default function TaskList({ tasks, filter, starredOnly, onPass, onFail, o
   let filtered = tasks.filter(t => filter === 'all' || t.type === filter);
   if (starredOnly) filtered = filtered.filter(t => t.starred);
 
-  // Separate open (due) tasks from waiting tasks
+  // 分区：open=该复习（已到期），waiting=还没到期。
+  // 到期的 waiting 兜底也算作 open，避免还没触发 promote 时显示错位。
   const now = new Date();
   const openTasks = filtered.filter(t => t.status === 'open' || new Date(t.nextReviewDate) <= now);
-  const waitingTasks = filtered.filter(t => t.status !== 'open' && new Date(t.nextReviewDate) > now);
+  const waitingTasks = filtered.filter(t => t.status === 'waiting' && new Date(t.nextReviewDate) > now);
 
   // 星标题目单独置顶（未开启“只看星标”时才需要，避免重复）
   const starredTasks = !starredOnly ? filtered.filter(t => t.starred) : [];

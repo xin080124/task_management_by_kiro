@@ -16,7 +16,9 @@ export default function TaskCard({ task, onPass, onFail, onDelete, onEdit, onTog
   const [editQuestion, setEditQuestion] = useState(task.question);
   const [editAnswer, setEditAnswer] = useState(task.answer);
 
-  const statusLabel = task.status === 'open' ? '待复习' : `等待中 (${task.status.toUpperCase()})`;
+  // level 0..5 显示成 P1..P5（level 0 的 open 不显示等级，直接“待复习”）
+  const levelLabel = task.level > 0 ? `P${task.level}` : '';
+  const statusLabel = task.status === 'open' ? '待复习' : `等待中 (${levelLabel})`;
   const isOpen = task.status === 'open';
   const isWaiting = !isOpen;
 
@@ -55,7 +57,7 @@ export default function TaskCard({ task, onPass, onFail, onDelete, onEdit, onTog
         <span className={`type-badge ${task.type}`}>{task.type.toUpperCase()}</span>
         <div className="task-header-right">
           <span className={`status-badge ${task.status}`}>
-            {isWaiting && !isDue ? `${task.status.toUpperCase()} · ${daysLeft}天后` : statusLabel}
+            {isWaiting && !isDue ? `${levelLabel} · ${daysLeft}天后` : statusLabel}
           </span>
           <button className="btn-edit" onClick={() => setEditing(!editing)} title="编辑">✎</button>
           <button className="btn-delete" onClick={() => onDelete(task.id)} title="删除">✕</button>
@@ -112,8 +114,16 @@ export default function TaskCard({ task, onPass, onFail, onDelete, onEdit, onTog
 
       {isWaiting && !editing && (
         <div className="task-meta">
-          下次复习: {reviewDate.toLocaleDateString('zh-CN')}
-          {isDue && <span className="due-tag"> (已到期)</span>}
+          {isDue ? (
+            <>
+              下次复习: {reviewDate.toLocaleDateString('zh-CN')}
+              <span className="due-tag"> (已到期)</span>
+            </>
+          ) : (
+            <>
+              🔆 {reviewDate.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })} 恢复（{daysLeft}天后）
+            </>
+          )}
         </div>
       )}
     </div>
